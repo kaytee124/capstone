@@ -37,10 +37,18 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'accounts',
-    'customers',
+    # Third-party apps
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',  # Required for token blacklisting
+    # Local apps
+    'accounts',
+    'customers',
+    'client_portal',
+    'dashboard',
+    'orders',
+    'payments',
+    'services',
 ]
 
 MIDDLEWARE = [
@@ -78,8 +86,16 @@ WSGI_APPLICATION = 'capstone.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': 'laundry_management_system',
+        'USER': 'root',  # Update with your MySQL username
+        'PASSWORD': 'Vicky@2017',  # Update with your MySQL password
+        'HOST': 'localhost',  # Update if MySQL is on a different host
+        'PORT': '3306',  # Update if MySQL uses a different port
+        'OPTIONS': {
+            'charset': 'utf8mb4',
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+        },
     }
 }
 

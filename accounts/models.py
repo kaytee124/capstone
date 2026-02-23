@@ -34,7 +34,7 @@ class CustomUserManager(BaseUserManager):
 class User(AbstractUser):
     username = models.CharField(max_length=150, unique=True)
     email = models.EmailField(unique=True)
-    password = models.CharField(max_length=128)
+    password = models.CharField(max_length=128, db_column='password_hash')
     first_name = models.CharField(max_length=150)
     last_name = models.CharField(max_length=150)
     role = models.CharField(max_length=20, choices=[('superadmin', 'Superadmin'), ('admin', 'Admin'), ('employee', 'Employee'), ('client', 'Client')], default='client')
