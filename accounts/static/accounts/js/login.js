@@ -125,6 +125,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     localStorage.setItem('refresh_token', data.refresh);
                     localStorage.setItem('user', JSON.stringify(data.user));
                     
+                    // Check for auto-refreshed tokens (shouldn't happen on login, but just in case)
+                    if (data.token_refreshed && data.new_access_token) {
+                        localStorage.setItem('access_token', data.new_access_token);
+                        if (data.new_refresh_token) {
+                            localStorage.setItem('refresh_token', data.new_refresh_token);
+                        }
+                    }
+                    
                     showAlert('Login successful! Redirecting...', 'success');
                     
                     // Redirect after short delay

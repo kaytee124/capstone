@@ -145,7 +145,8 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # REST Framework configuration
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'accounts.authentication.AutoRefreshJWTAuthentication',  # Custom auto-refresh authentication
+        'rest_framework_simplejwt.authentication.JWTAuthentication',  # Fallback
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
@@ -165,3 +166,6 @@ SIMPLE_JWT = {
     'SIGNING_KEY': SECRET_KEY,
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
+
+# Default password for customers created by admin/employee
+DEFAULT_CUSTOMER_PASSWORD = 'ChangeMe123!'

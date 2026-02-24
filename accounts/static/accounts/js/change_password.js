@@ -232,13 +232,21 @@ document.addEventListener('DOMContentLoaded', function() {
             submitBtn.innerHTML = '<span class="loading"></span> Changing password...';
             
             try {
+                // Include refresh token in header for auto-refresh
+                const refreshToken = localStorage.getItem('refresh_token');
+                const headers = {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`,
+                    'X-CSRFToken': getCookie('csrftoken')
+                };
+                
+                if (refreshToken) {
+                    headers['X-Refresh-Token'] = refreshToken;
+                }
+                
                 const response = await fetch('/api/accounts/change-password/', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${accessToken}`,
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
+                    headers: headers,
                     body: JSON.stringify({
                         old_password: oldPasswordInput.value,
                         new_password: newPasswordInput.value,
@@ -249,6 +257,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 const data = await response.json();
                 
                 if (response.ok) {
+                    // Check for auto-refreshed tokens and update localStorage
+                    if (data.token_refreshed && data.new_access_token) {
+                        localStorage.setItem('access_token', data.new_access_token);
+                        if (data.new_refresh_token) {
+                            localStorage.setItem('refresh_token', data.new_refresh_token);
+                        }
+                    }
+                    
                     showAlert('Password changed successfully!', 'success');
                     changePasswordForm.reset();
                     updatePasswordStrength('');
