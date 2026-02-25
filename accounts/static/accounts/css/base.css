@@ -196,6 +196,10 @@ body {
     animation: slideDown 0.3s ease-out;
 }
 
+.alert.hidden {
+    display: none;
+}
+
 @keyframes slideDown {
     from {
         opacity: 0;

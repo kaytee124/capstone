@@ -44,7 +44,7 @@ class User(AbstractUser):
     last_login = models.DateTimeField(null=True)
     date_joined = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    updated_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True)
+    updated_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, db_column='updated_by')
 
     objects = CustomUserManager()
 

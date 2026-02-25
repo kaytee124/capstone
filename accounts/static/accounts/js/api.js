@@ -3,24 +3,63 @@
 
 // Token management functions
 const TokenManager = {
-    // Get access token from localStorage
+    // Get access token from localStorage (with cookie fallback)
     getAccessToken: function() {
-        return localStorage.getItem('access_token');
+        let token = localStorage.getItem('access_token');
+        if (!token) {
+            // Fallback to cookie
+            token = this.getCookie('access_token');
+            if (token) {
+                localStorage.setItem('access_token', token);
+            }
+        }
+        return token;
     },
-    
-    // Get refresh token from localStorage
+
+    // Get refresh token from localStorage (with cookie fallback)
     getRefreshToken: function() {
-        return localStorage.getItem('refresh_token');
+        let token = localStorage.getItem('refresh_token');
+        if (!token) {
+            // Fallback to cookie
+            token = this.getCookie('refresh_token');
+            if (token) {
+                localStorage.setItem('refresh_token', token);
+            }
+        }
+        return token;
     },
-    
-    // Set access token
+
+    // Set access token (both localStorage and cookie)
     setAccessToken: function(token) {
         localStorage.setItem('access_token', token);
+        this.setCookie('access_token', token, 3600); // 1 hour
     },
-    
-    // Set refresh token
+
+    // Set refresh token (both localStorage and cookie)
     setRefreshToken: function(token) {
         localStorage.setItem('refresh_token', token);
+        this.setCookie('refresh_token', token, 86400); // 1 day
+    },
+    
+    // Helper to get cookie
+    getCookie: function(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    },
+    
+    // Helper to set cookie
+    setCookie: function(name, value, maxAge) {
+        document.cookie = `${name}=${encodeURIComponent(value)}; max-age=${maxAge}; path=/; SameSite=Lax`;
     },
     
     // Update tokens from response
@@ -38,11 +77,14 @@ const TokenManager = {
         return false;
     },
     
-    // Clear all tokens
+    // Clear all tokens (both localStorage and cookies)
     clearTokens: function() {
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
         localStorage.removeItem('user');
+        // Clear cookies
+        this.setCookie('access_token', '', 0);
+        this.setCookie('refresh_token', '', 0);
     }
 };
 
@@ -152,30 +194,85 @@ window.fetch = async function(url, options = {}) {
         options.headers = headers;
     }
     
-    // Call original fetch
-    const response = await originalFetch(url, options);
-    
-    // Process response for token updates (only for API calls with JSON responses)
-    if (typeof url === 'string' && url.startsWith('/api/') && response.headers.get('content-type')?.includes('application/json')) {
-        const clonedResponse = response.clone();
-        
-        try {
-            const data = await clonedResponse.json();
-            
-            // Check if response contains new tokens (from auto-refresh)
-            if (data && data.token_refreshed && data.new_access_token) {
-                TokenManager.setAccessToken(data.new_access_token);
-                
-                if (data.new_refresh_token) {
-                    TokenManager.setRefreshToken(data.new_refresh_token);
-                }
-                
-                console.log('✅ Tokens automatically refreshed and updated in localStorage');
-            }
-        } catch (e) {
-            // Not JSON or can't parse, ignore
-        }
-    }
-    
-    return response;
+           // Call original fetch
+           const response = await originalFetch(url, options);
+
+           // Handle authentication and permission errors
+           if (typeof url === 'string' && url.startsWith('/api/')) {
+               // Handle 401 Unauthorized (authentication required)
+               if (response.status === 401) {
+                   // Clear tokens
+                   TokenManager.clearTokens();
+                   
+                   // Get error message from response if available
+                   let errorMessage = 'Authentication required. Please log in to continue.';
+                   try {
+                       const clonedResponse = response.clone();
+                       const data = await clonedResponse.json();
+                       if (data.message) {
+                           errorMessage = data.message;
+                       }
+                   } catch (e) {
+                       // Ignore if can't parse JSON
+                   }
+                   
+                   // Redirect to login with current URL as next parameter
+                   const currentUrl = window.location.pathname + window.location.search;
+                   const loginUrl = `/api/accounts/login/?next=${encodeURIComponent(currentUrl)}&error=NO_TOKEN&message=${encodeURIComponent(errorMessage)}`;
+                   window.location.href = loginUrl;
+                   return response; // Return response but user will be redirected
+               }
+               
+               // Handle 403 Forbidden (permission denied)
+               if (response.status === 403) {
+                   let errorMessage = 'You do not have permission to access this resource.';
+                   try {
+                       const clonedResponse = response.clone();
+                       const data = await clonedResponse.json();
+                       if (data.message) {
+                           errorMessage = data.message;
+                       }
+                   } catch (e) {
+                       // Ignore if can't parse JSON
+                   }
+                   
+                   // Check if user is authenticated
+                   const userData = localStorage.getItem('user');
+                   if (userData) {
+                       // User is authenticated but lacks permission - redirect to profile
+                       const profileUrl = `/api/accounts/user/profile/?error=PERMISSION_DENIED&message=${encodeURIComponent(errorMessage)}`;
+                       window.location.href = profileUrl;
+                   } else {
+                       // User is not authenticated - redirect to login
+                       const currentUrl = window.location.pathname + window.location.search;
+                       const loginUrl = `/api/accounts/login/?next=${encodeURIComponent(currentUrl)}&error=PERMISSION_DENIED&message=${encodeURIComponent(errorMessage)}`;
+                       window.location.href = loginUrl;
+                   }
+                   return response;
+               }
+               
+               // Process response for token updates (only for API calls with JSON responses)
+               if (response.headers.get('content-type')?.includes('application/json')) {
+                   const clonedResponse = response.clone();
+
+                   try {
+                       const data = await clonedResponse.json();
+
+                       // Check if response contains new tokens (from auto-refresh)
+                       if (data && data.token_refreshed && data.new_access_token) {
+                           TokenManager.setAccessToken(data.new_access_token);
+
+                           if (data.new_refresh_token) {
+                               TokenManager.setRefreshToken(data.new_refresh_token);
+                           }
+
+                           console.log('✅ Tokens automatically refreshed and updated in localStorage');
+                       }
+                   } catch (e) {
+                       // Not JSON or can't parse, ignore
+                   }
+               }
+           }
+
+           return response;
 };

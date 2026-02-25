@@ -1,0 +1,55 @@
+{% extends 'accounts/base.html' %}
+{% load static %}
+
+{% block title %}All Admins - Laundry Management System{% endblock %}
+{% block page_title %}All Admins{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'accounts/css/forms.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="list-container">
+    <div class="list-header">
+        <h2>All Admins</h2>
+        <a href="{% url 'create_admin' %}" class="btn btn-primary">Create Admin</a>
+    </div>
+    
+    <div class="search-filter-bar">
+        <input type="text" id="searchInput" class="search-input" placeholder="Search by name, email...">
+        <select id="statusFilter" class="form-input">
+            <option value="">All Status</option>
+            <option value="true">Active</option>
+            <option value="false">Inactive</option>
+        </select>
+        <button id="searchBtn" class="btn btn-secondary">Search</button>
+    </div>
+    
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="adminsTableBody">
+                <tr>
+                    <td colspan="4" style="text-align: center; padding: 2rem;">Loading...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="pagination" id="pagination">
+        <div class="pagination-info">Loading...</div>
+        <div class="pagination-controls"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'accounts/js/admins_list.js' %}"></script>
+{% endblock %}

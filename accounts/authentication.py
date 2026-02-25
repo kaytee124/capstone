@@ -16,7 +16,18 @@ class AutoRefreshJWTAuthentication(JWTAuthentication):
     def authenticate(self, request):
         """
         Authenticate the request and auto-refresh token if expired.
+        Also checks cookies for tokens (for browser navigation).
         """
+        # Check for token in Authorization header first
+        auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+        
+        # If no Authorization header, check cookies (for browser navigation)
+        if not auth_header or not auth_header.startswith('Bearer '):
+            access_token = request.COOKIES.get('access_token')
+            if access_token:
+                # Set the Authorization header from cookie
+                request.META['HTTP_AUTHORIZATION'] = f'Bearer {access_token}'
+        
         # First, try normal authentication
         try:
             return super().authenticate(request)
@@ -31,11 +42,12 @@ class AutoRefreshJWTAuthentication(JWTAuthentication):
         """
         Try to automatically refresh the token if refresh token is available.
         """
-        # Check for refresh token in custom header or request data
+        # Check for refresh token in custom header, request data, or cookies
         refresh_token = (
             request.META.get('HTTP_X_REFRESH_TOKEN') or  # Custom header: X-Refresh-Token
             request.data.get('refresh_token') or  # Request body
-            request.GET.get('refresh_token')  # Query param (less secure, but available)
+            request.GET.get('refresh_token') or  # Query param (less secure, but available)
+            request.COOKIES.get('refresh_token')  # Cookie (for browser navigation)
         )
         
         if not refresh_token:

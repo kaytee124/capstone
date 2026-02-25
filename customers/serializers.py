@@ -242,21 +242,103 @@ class AdminCustomerCreationSerializer(serializers.Serializer):
     notes = serializers.CharField(required=False, allow_blank=True, default='')
     
     def validate_username(self, value):
-        """Check if username already exists"""
+        """Check if username is provided and not already exists"""
+        if not value or value.strip() == '':
+            raise MissingFieldsError({
+                'error_code': 'MISSING_FIELDS',
+                'message': 'Required fields missing',
+                'status_code': 400
+            })
+        
         if User.objects.filter(username=value).exists():
-            raise serializers.ValidationError("Username already exists")
+            raise UsernameExistsError({
+                'error_code': 'USERNAME_EXISTS',
+                'message': 'Username already taken',
+                'status_code': 409
+            })
         return value
     
     def validate_email(self, value):
-        """Check if email already exists"""
+        """Check if email is provided, valid, and not already exists"""
+        if not value or value.strip() == '':
+            raise MissingFieldsError({
+                'error_code': 'MISSING_FIELDS',
+                'message': 'Required fields missing',
+                'status_code': 400
+            })
+        
+        # Basic email format validation
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_pattern, value):
+            raise InvalidEmailError({
+                'error_code': 'INVALID_EMAIL',
+                'message': 'Invalid email format',
+                'status_code': 422
+            })
+        
         if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("Email already exists")
+            raise EmailExistsError({
+                'error_code': 'EMAIL_EXISTS',
+                'message': 'Email already registered',
+                'status_code': 409
+            })
         return value
     
     def validate_phone_number(self, value):
-        """Check if phone number already exists"""
+        """Check if phone number is provided and not already exists"""
+        if not value or value.strip() == '':
+            raise MissingFieldsError({
+                'error_code': 'MISSING_FIELDS',
+                'message': 'Required fields missing',
+                'status_code': 400
+            })
+        
         if Customer.objects.filter(phone_number=value).exists():
-            raise serializers.ValidationError("Phone number already exists")
+            raise PhoneExistsError({
+                'error_code': 'PHONE_EXISTS',
+                'message': 'Phone number already registered',
+                'status_code': 409
+            })
+        return value
+    
+    def validate_first_name(self, value):
+        """Check if first name is provided"""
+        if not value or value.strip() == '':
+            raise MissingFieldsError({
+                'error_code': 'MISSING_FIELDS',
+                'message': 'Required fields missing',
+                'status_code': 400
+            })
+        return value
+    
+    def validate_last_name(self, value):
+        """Check if last name is provided"""
+        if not value or value.strip() == '':
+            raise MissingFieldsError({
+                'error_code': 'MISSING_FIELDS',
+                'message': 'Required fields missing',
+                'status_code': 400
+            })
+        return value
+    
+    def validate_address(self, value):
+        """Check if address is provided"""
+        if not value or value.strip() == '':
+            raise MissingFieldsError({
+                'error_code': 'MISSING_FIELDS',
+                'message': 'Required fields missing',
+                'status_code': 400
+            })
+        return value
+    
+    def validate_whatsapp_number(self, value):
+        """Check if whatsapp number is provided"""
+        if not value or value.strip() == '':
+            raise MissingFieldsError({
+                'error_code': 'MISSING_FIELDS',
+                'message': 'Required fields missing',
+                'status_code': 400
+            })
         return value
     
     def create(self, validated_data):
@@ -316,3 +398,4 @@ class AdminCustomerCreationSerializer(serializers.Serializer):
             customer.save()
         
         return customer
+

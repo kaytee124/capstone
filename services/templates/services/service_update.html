@@ -1,0 +1,61 @@
+{% extends 'accounts/base.html' %}
+{% load static %}
+
+{% block title %}Update Service - Laundry Management System{% endblock %}
+{% block page_title %}Update Service{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'accounts/css/forms.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <div class="form-card">
+        <h2>Update Service</h2>
+        <form id="updateForm">
+            {% csrf_token %}
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="name">Name <span class="required">*</span></label>
+                    <input type="text" id="name" name="name" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label for="category">Category</label>
+                    <input type="text" id="category" name="category" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label for="price">Price <span class="required">*</span></label>
+                    <input type="number" id="price" name="price" class="form-input" step="0.01" min="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label for="unit">Unit</label>
+                    <input type="text" id="unit" name="unit" class="form-input" placeholder="e.g., per item, per kg">
+                </div>
+                <div class="form-group">
+                    <label for="estimated_days">Estimated Days</label>
+                    <input type="number" id="estimated_days" name="estimated_days" class="form-input" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="is_active">Status</label>
+                    <select id="is_active" name="is_active" class="form-input">
+                        <option value="true">Active</option>
+                        <option value="false">Inactive</option>
+                    </select>
+                </div>
+                <div class="form-group full-width">
+                    <label for="description">Description</label>
+                    <textarea id="description" name="description" class="form-input" rows="4"></textarea>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Update Service</button>
+                <a href="#" id="backBtn" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'services/js/service_update.js' %}"></script>
+{% endblock %}

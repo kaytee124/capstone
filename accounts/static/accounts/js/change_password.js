@@ -11,6 +11,56 @@ document.addEventListener('DOMContentLoaded', function() {
     const submitBtn = document.getElementById('submitBtn');
     const passwordStrengthBar = document.getElementById('passwordStrengthBar');
     const passwordMatchIndicator = document.getElementById('passwordMatchIndicator');
+    
+    // Check if password change is required
+    const urlParams = new URLSearchParams(window.location.search);
+    const isRequired = urlParams.get('required') === 'true' || localStorage.getItem('requires_password_change') === 'true';
+    
+    // Hide/disable back link if password change is required
+    const backLink = document.querySelector('.back-link');
+    if (backLink && isRequired) {
+        backLink.style.display = 'none';
+        // Show warning message
+        if (alertContainer) {
+            alertContainer.innerHTML = `
+                <div class="alert alert-error">
+                    <span>⚠</span>
+                    <span>You must change your default password before you can access other pages.</span>
+                </div>
+            `;
+            alertContainer.classList.remove('hidden');
+        }
+    }
+    
+    // Prevent navigation if password change is required
+    let allowRedirect = false;
+    let beforeUnloadHandler = null;
+    let clickHandler = null;
+    
+    if (isRequired) {
+        // Prevent navigation using beforeunload
+        beforeUnloadHandler = function(e) {
+            if (!allowRedirect) {
+                e.preventDefault();
+                e.returnValue = 'Please change your password before navigating away.';
+                return e.returnValue;
+            }
+        };
+        window.addEventListener('beforeunload', beforeUnloadHandler);
+        
+        // Prevent link navigation
+        clickHandler = function(e) {
+            if (!allowRedirect) {
+                const link = e.target.closest('a');
+                if (link && link.href && !link.href.includes('change-password')) {
+                    e.preventDefault();
+                    alert('Please change your password before navigating to other pages.');
+                    return false;
+                }
+            }
+        };
+        document.addEventListener('click', clickHandler, true);
+    }
 
     // Get access token from localStorage
     function getAccessToken() {
@@ -65,15 +115,21 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (password.length === 0) {
             passwordStrengthBar.style.width = '0%';
+            passwordStrengthBar.style.backgroundColor = '';
             return;
         }
         
+        // Calculate width percentage based on strength (0-5 scale)
+        const widthPercentage = (strength / 5) * 100;
+        passwordStrengthBar.style.width = widthPercentage + '%';
+        
+        // Set color based on strength
         if (strength <= 2) {
-            passwordStrengthBar.classList.add('password-strength-weak');
+            passwordStrengthBar.style.backgroundColor = 'var(--error-color, #dc3545)';
         } else if (strength <= 3) {
-            passwordStrengthBar.classList.add('password-strength-medium');
+            passwordStrengthBar.style.backgroundColor = 'var(--warning-color, #ffc107)';
         } else {
-            passwordStrengthBar.classList.add('password-strength-strong');
+            passwordStrengthBar.style.backgroundColor = 'var(--success-color, #28a745)';
         }
     }
 
@@ -232,21 +288,14 @@ document.addEventListener('DOMContentLoaded', function() {
             submitBtn.innerHTML = '<span class="loading"></span> Changing password...';
             
             try {
-                // Include refresh token in header for auto-refresh
-                const refreshToken = localStorage.getItem('refresh_token');
-                const headers = {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${accessToken}`,
-                    'X-CSRFToken': getCookie('csrftoken')
-                };
-                
-                if (refreshToken) {
-                    headers['X-Refresh-Token'] = refreshToken;
-                }
-                
+                // Use global fetch which automatically handles tokens and refresh
                 const response = await fetch('/api/accounts/change-password/', {
                     method: 'POST',
-                    headers: headers,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
                     body: JSON.stringify({
                         old_password: oldPasswordInput.value,
                         new_password: newPasswordInput.value,
@@ -259,19 +308,43 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (response.ok) {
                     // Check for auto-refreshed tokens and update localStorage
                     if (data.token_refreshed && data.new_access_token) {
-                        localStorage.setItem('access_token', data.new_access_token);
-                        if (data.new_refresh_token) {
-                            localStorage.setItem('refresh_token', data.new_refresh_token);
+                        if (typeof TokenManager !== 'undefined') {
+                            TokenManager.setAccessToken(data.new_access_token);
+                            if (data.new_refresh_token) {
+                                TokenManager.setRefreshToken(data.new_refresh_token);
+                            }
+                        } else {
+                            localStorage.setItem('access_token', data.new_access_token);
+                            if (data.new_refresh_token) {
+                                localStorage.setItem('refresh_token', data.new_refresh_token);
+                            }
                         }
                     }
+                    
+                    // Clear the requires_password_change flag
+                    localStorage.removeItem('requires_password_change');
                     
                     showAlert('Password changed successfully!', 'success');
                     changePasswordForm.reset();
                     updatePasswordStrength('');
                     passwordMatchIndicator.classList.add('hidden');
                     
+                    // Allow redirect after successful password change
+                    if (isRequired) {
+                        allowRedirect = true;
+                        // Remove event listeners
+                        if (beforeUnloadHandler) {
+                            window.removeEventListener('beforeunload', beforeUnloadHandler);
+                        }
+                        if (clickHandler) {
+                            document.removeEventListener('click', clickHandler, true);
+                        }
+                    }
+                    
+                    // Always redirect to profile page after password change
                     setTimeout(() => {
-                        window.location.href = '/';
+                        // Use location.assign to ensure redirect works
+                        window.location.assign('/api/accounts/user/profile/');
                     }, 2000);
                 } else {
                     let errorMessage = 'Failed to change password. Please try again.';

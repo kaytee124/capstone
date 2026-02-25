@@ -1,0 +1,116 @@
+{% extends 'accounts/base.html' %}
+{% load static %}
+
+{% block title %}User Details - Laundry Management System{% endblock %}
+{% block page_title %}User Details{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'accounts/css/profile.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="profile-container">
+    <div class="profile-card">
+        <div class="profile-header">
+            <div class="profile-avatar">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+            </div>
+            <div class="profile-info">
+                <h2 id="profileName">Loading...</h2>
+                <p id="profileEmail">Loading...</p>
+                <span class="status-badge" id="profileStatus">Loading...</span>
+            </div>
+        </div>
+
+        <div class="profile-content">
+            <div class="info-section">
+                <h3>Personal Information</h3>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <label>First Name</label>
+                        <p id="firstName">-</p>
+                    </div>
+                    <div class="info-item">
+                        <label>Last Name</label>
+                        <p id="lastName">-</p>
+                    </div>
+                    <div class="info-item">
+                        <label>Username</label>
+                        <p id="username">-</p>
+                    </div>
+                    <div class="info-item">
+                        <label>Email</label>
+                        <p id="email">-</p>
+                    </div>
+                    <div class="info-item">
+                        <label>Status</label>
+                        <p id="status">-</p>
+                    </div>
+                    <div class="info-item">
+                        <label>Updated By</label>
+                        <p id="updatedBy">-</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-section" id="customerSection" style="display: none;">
+                <h3>Customer Information</h3>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <label>Phone Number</label>
+                        <p id="phoneNumber">-</p>
+                    </div>
+                    <div class="info-item">
+                        <label>WhatsApp Number</label>
+                        <p id="whatsappNumber">-</p>
+                    </div>
+                    <div class="info-item full-width">
+                        <label>Address</label>
+                        <p id="address">-</p>
+                    </div>
+                    <div class="info-item">
+                        <label>Preferred Contact</label>
+                        <p id="preferredContact">-</p>
+                    </div>
+                    <div class="info-item full-width">
+                        <label>Notes</label>
+                        <p id="notes">-</p>
+                    </div>
+                    <div class="info-item">
+                        <label>Created By</label>
+                        <p id="customerCreatedBy">-</p>
+                    </div>
+                    <div class="info-item">
+                        <label>Updated By</label>
+                        <p id="customerUpdatedBy">-</p>
+                    </div>
+                    <div class="info-item">
+                        <label>Total Orders</label>
+                        <p id="totalOrders">-</p>
+                    </div>
+                    <div class="info-item">
+                        <label>Total Spent</label>
+                        <p id="totalSpent">-</p>
+                    </div>
+                    <div class="info-item">
+                        <label>Last Order Date</label>
+                        <p id="lastOrderDate">-</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="action-buttons">
+                <a href="#" id="updateBtn" class="btn btn-primary" style="display: none;">Update User</a>
+                <a href="javascript:history.back()" class="btn btn-secondary">Back</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'accounts/js/staff_user_by_id.js' %}"></script>
+{% endblock %}

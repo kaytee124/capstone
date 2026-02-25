@@ -6,6 +6,21 @@ document.addEventListener('DOMContentLoaded', function() {
     const passwordToggle = document.getElementById('passwordToggle');
     const alertContainer = document.getElementById('alertContainer');
     const submitBtn = document.getElementById('submitBtn');
+    
+    // Show error message if present in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const error = urlParams.get('error');
+    const errorMessage = urlParams.get('message');
+    
+    if (error && errorMessage) {
+        // Show the error alert if it exists in the template
+        const existingAlert = alertContainer.querySelector('.alert');
+        if (existingAlert) {
+            alertContainer.classList.remove('hidden');
+        } else {
+            showAlert(errorMessage, error.toLowerCase().includes('permission') ? 'error' : 'error');
+        }
+    }
 
     // Password toggle functionality
     if (passwordToggle) {
@@ -120,37 +135,131 @@ document.addEventListener('DOMContentLoaded', function() {
                 const data = await response.json();
                 
                 if (response.ok) {
-                    // Store tokens
-                    localStorage.setItem('access_token', data.access);
-                    localStorage.setItem('refresh_token', data.refresh);
+                    // Store tokens - use TokenManager if available (from api.js), otherwise use localStorage directly
+                    if (typeof TokenManager !== 'undefined') {
+                        TokenManager.setAccessToken(data.access);
+                        TokenManager.setRefreshToken(data.refresh);
+                    } else {
+                        localStorage.setItem('access_token', data.access);
+                        localStorage.setItem('refresh_token', data.refresh);
+                    }
                     localStorage.setItem('user', JSON.stringify(data.user));
                     
                     // Check for auto-refreshed tokens (shouldn't happen on login, but just in case)
                     if (data.token_refreshed && data.new_access_token) {
-                        localStorage.setItem('access_token', data.new_access_token);
-                        if (data.new_refresh_token) {
-                            localStorage.setItem('refresh_token', data.new_refresh_token);
+                        if (typeof TokenManager !== 'undefined') {
+                            TokenManager.setAccessToken(data.new_access_token);
+                            if (data.new_refresh_token) {
+                                TokenManager.setRefreshToken(data.new_refresh_token);
+                            }
+                        } else {
+                            localStorage.setItem('access_token', data.new_access_token);
+                            if (data.new_refresh_token) {
+                                localStorage.setItem('refresh_token', data.new_refresh_token);
+                            }
                         }
                     }
                     
-                    showAlert('Login successful! Redirecting...', 'success');
-                    
-                    // Redirect after short delay
-                    setTimeout(() => {
-                        window.location.href = '/';
-                    }, 1000);
+                    // Check if password change is required
+                    if (data.requires_password_change) {
+                        showAlert('Please change your default password before continuing.', 'error');
+                        // Store flag in localStorage to prevent navigation
+                        localStorage.setItem('requires_password_change', 'true');
+                        // Redirect to change password page
+                        setTimeout(() => {
+                            window.location.href = '/api/accounts/change-password/?required=true';
+                        }, 1500);
+                    } else {
+                        // Clear the flag if it exists
+                        localStorage.removeItem('requires_password_change');
+                        showAlert('Login successful! Redirecting...', 'success');
+                        
+                        // Get redirect URL from query parameter or default to profile
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const nextUrl = urlParams.get('next');
+                        const redirectUrl = nextUrl && nextUrl.startsWith('/') 
+                            ? nextUrl 
+                            : '/api/accounts/user/profile/';
+                        
+                        // Verify tokens are stored
+                        console.log('Tokens stored:', {
+                            access: !!localStorage.getItem('access_token'),
+                            refresh: !!localStorage.getItem('refresh_token'),
+                            user: !!localStorage.getItem('user')
+                        });
+                        
+                        // Redirect after short delay - use fetch to ensure token is sent
+                        setTimeout(() => {
+                            // First verify the token works by making a test request
+                            const accessToken = localStorage.getItem('access_token');
+                            const refreshToken = localStorage.getItem('refresh_token');
+                            
+                            if (accessToken && refreshToken) {
+                                // Make a fetch request with proper headers to verify authentication
+                                fetch(redirectUrl, {
+                                    method: 'GET',
+                                    headers: {
+                                        'Authorization': `Bearer ${accessToken}`,
+                                        'X-Refresh-Token': refreshToken,
+                                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+                                    }
+                                }).then(response => {
+                                    if (response.ok || response.redirected) {
+                                        // If successful, navigate to the page
+                                        window.location.href = redirectUrl;
+                                    } else {
+                                        // If failed, try redirecting anyway (token might work on server side)
+                                        console.warn('Token verification failed, redirecting anyway');
+                                        window.location.href = redirectUrl;
+                                    }
+                                }).catch(error => {
+                                    console.error('Error verifying token:', error);
+                                    // Redirect anyway
+                                    window.location.href = redirectUrl;
+                                });
+                            } else {
+                                // No tokens, redirect anyway (shouldn't happen)
+                                console.error('No tokens found after login!');
+                                window.location.href = redirectUrl;
+                            }
+                        }, 1000);
+                    }
                 } else {
                     // Handle validation errors
                     let errorMessage = 'Login failed. Please check your credentials.';
                     
-                    if (data.username) {
-                        errorMessage = Array.isArray(data.username) ? data.username[0] : data.username;
+                    // Extract error_code and message, handling both string and array formats
+                    const errorCode = Array.isArray(data.error_code) ? data.error_code[0] : data.error_code;
+                    const message = Array.isArray(data.message) ? data.message[0] : data.message;
+                    
+                    // Check for specific error codes first
+                    if (errorCode === 'ACCOUNT_INACTIVE') {
+                        errorMessage = message || 'Your account has been deactivated. Please contact the administrator for assistance.';
+                    } else if (errorCode === 'INVALID_CREDENTIALS') {
+                        errorMessage = message || 'Invalid username or password';
+                    } else if (errorCode === 'MISSING_FIELDS') {
+                        errorMessage = message || 'Username and password are required';
+                    } else if (message) {
+                        // Ensure message is a string, not an object
+                        errorMessage = typeof message === 'string' ? message : (Array.isArray(message) ? message[0] : 'Invalid credentials');
+                    } else if (data.username) {
+                        errorMessage = Array.isArray(data.username) ? data.username[0] : (typeof data.username === 'string' ? data.username : 'Invalid username');
                     } else if (data.password) {
-                        errorMessage = Array.isArray(data.password) ? data.password[0] : data.password;
+                        errorMessage = Array.isArray(data.password) ? data.password[0] : (typeof data.password === 'string' ? data.password : 'Invalid password');
                     } else if (data.non_field_errors) {
-                        errorMessage = Array.isArray(data.non_field_errors) ? data.non_field_errors[0] : data.non_field_errors;
+                        const nfe = data.non_field_errors;
+                        if (Array.isArray(nfe) && nfe.length > 0) {
+                            errorMessage = typeof nfe[0] === 'string' ? nfe[0] : 'Invalid credentials';
+                        } else if (typeof nfe === 'string') {
+                            errorMessage = nfe;
+                        } else {
+                            errorMessage = 'Invalid credentials';
+                        }
                     } else if (data.detail) {
-                        errorMessage = data.detail;
+                        errorMessage = Array.isArray(data.detail) ? data.detail[0] : (typeof data.detail === 'string' ? data.detail : 'Invalid credentials');
+                    } else {
+                        // If we still don't have a message, use default
+                        errorMessage = 'Invalid username or password';
                     }
                     
                     showAlert(errorMessage);

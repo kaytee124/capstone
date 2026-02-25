@@ -17,7 +17,14 @@
                     <p class="card-subtitle">Sign in to your account to continue</p>
                 </div>
 
-                <div id="alertContainer" class="hidden"></div>
+                <div id="alertContainer" class="hidden">
+                    {% if error %}
+                    <div class="alert alert-{{ error|lower }}">
+                        <span>{% if error == 'NO_TOKEN' or error == 'INVALID_TOKEN' %}⚠{% elif error == 'PERMISSION_DENIED' %}✕{% else %}ℹ{% endif %}</span>
+                        <span>{{ error_message|default:"An error occurred" }}</span>
+                    </div>
+                    {% endif %}
+                </div>
 
                 <form id="loginForm" class="login-form" method="post">
                     {% csrf_token %}

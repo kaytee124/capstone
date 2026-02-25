@@ -3,8 +3,11 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.exceptions import ValidationError, AuthenticationFailed, NotAuthenticated
+from rest_framework_simplejwt.exceptions import InvalidToken
 from accounts.mixins import AutoRefreshTokenMixin
 from .models import Customer
+from accounts.permissions import IsStaff
 from .serializers import (
     CustomerRegistrationSerializer,
     AdminCustomerCreationSerializer,
@@ -27,6 +30,10 @@ class CustomerRegistrationView(APIView):
     permission_classes = [AllowAny]
     serializer_class = CustomerRegistrationSerializer
     
+    def get(self, request):
+        """Render registration template"""
+        return render(request, 'customers/register.html')
+    
     def post(self, request):
         """Handle customer registration with custom error codes"""
         try:
@@ -43,6 +50,14 @@ class CustomerRegistrationView(APIView):
                 'customer_id': customer.id
             }, status=status.HTTP_201_CREATED)
             
+        except (AuthenticationFailed, NotAuthenticated, InvalidToken) as e:
+            # Handle authentication errors (for consistency, even though AllowAny is set)
+            return Response({
+                'error_code': 'NO_TOKEN' if isinstance(e, NotAuthenticated) else 'INVALID_TOKEN',
+                'message': 'Authentication credentials not provided' if isinstance(e, NotAuthenticated) else 'Invalid or expired token',
+                'status_code': 401
+            }, status=status.HTTP_401_UNAUTHORIZED)
+        
         except MissingFieldsError as e:
             error_detail = e.detail if hasattr(e, 'detail') else {
                 'error_code': 'MISSING_FIELDS',
@@ -90,33 +105,37 @@ class CustomerRegistrationView(APIView):
                 'status_code': 422
             }
             return Response(error_detail, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        
+        except ValidationError as e:
+            # Handle other validation errors
+            return Response({
+                'error_code': 'VALIDATION_ERROR',
+                'message': 'Invalid data provided',
+                'status_code': 422
+            }, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
             
         except Exception as e:
             # Log the error for debugging
             logger.error(f'Customer registration error: {str(e)}', exc_info=True)
             return Response({
                 'error_code': 'SERVER_ERROR',
-                'message': 'Registration failed',
+                'message': 'Failed to create customer',
                 'status_code': 500
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class AdminCustomerCreationView(AutoRefreshTokenMixin, APIView):
-    """View for admin/employee to create customers with default password"""
-    permission_classes = [IsAuthenticated]
+    """View for superadmin/admin/employee to create customers with default password"""
+    permission_classes = [IsAuthenticated, IsStaff]
     serializer_class = AdminCustomerCreationSerializer
     
+    def get(self, request):
+        """Render create customer template"""
+        return render(request, 'customers/create_customer.html')
+    
     def post(self, request):
-        """Handle customer creation by admin/employee"""
+        """Handle customer creation by superadmin/admin/employee with custom error codes"""
         try:
-            # Check if user has permission (admin, employee, or superadmin)
-            if request.user.role not in ['superadmin', 'admin', 'employee']:
-                return Response({
-                    'error_code': 'PERMISSION_DENIED',
-                    'message': 'You do not have permission to create customers',
-                    'status_code': 403
-                }, status=status.HTTP_403_FORBIDDEN)
-            
             serializer = self.serializer_class(
                 data=request.data, 
                 context={'user': request.user}
@@ -135,6 +154,46 @@ class AdminCustomerCreationView(AutoRefreshTokenMixin, APIView):
                 'note': 'Customer must change password on first login'
             }, status=status.HTTP_201_CREATED)
             
+        except (AuthenticationFailed, NotAuthenticated, InvalidToken) as e:
+            # Handle authentication errors
+            return Response({
+                'error_code': 'NO_TOKEN' if isinstance(e, NotAuthenticated) else 'INVALID_TOKEN',
+                'message': 'Authentication credentials not provided' if isinstance(e, NotAuthenticated) else 'Invalid or expired token',
+                'status_code': 401
+            }, status=status.HTTP_401_UNAUTHORIZED)
+        
+        except MissingFieldsError as e:
+            error_detail = e.detail if hasattr(e, 'detail') else {
+                'error_code': 'MISSING_FIELDS',
+                'message': 'Required fields missing',
+                'status_code': 400
+            }
+            return Response(error_detail, status=status.HTTP_400_BAD_REQUEST)
+        
+        except EmailExistsError as e:
+            error_detail = e.detail if hasattr(e, 'detail') else {
+                'error_code': 'EMAIL_EXISTS',
+                'message': 'Email already registered',
+                'status_code': 409
+            }
+            return Response(error_detail, status=status.HTTP_409_CONFLICT)
+        
+        except PhoneExistsError as e:
+            error_detail = e.detail if hasattr(e, 'detail') else {
+                'error_code': 'PHONE_EXISTS',
+                'message': 'Phone number already registered',
+                'status_code': 409
+            }
+            return Response(error_detail, status=status.HTTP_409_CONFLICT)
+        
+        except ValidationError as e:
+            # Handle validation errors
+            return Response({
+                'error_code': 'VALIDATION_ERROR',
+                'message': 'Invalid data provided',
+                'status_code': 422
+            }, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+            
         except Exception as e:
             # Log the error for debugging
             logger.error(f'Admin customer creation error: {str(e)}', exc_info=True)
@@ -143,3 +202,4 @@ class AdminCustomerCreationView(AutoRefreshTokenMixin, APIView):
                 'message': 'Failed to create customer',
                 'status_code': 500
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+

@@ -1,0 +1,53 @@
+{% extends 'accounts/base.html' %}
+{% load static %}
+
+{% block title %}Create Employee - Laundry Management System{% endblock %}
+{% block page_title %}Create Employee{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'accounts/css/forms.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <div class="form-card">
+        <h2>Create Employee</h2>
+        <p class="form-description">Create a new employee account with default password</p>
+        <form id="createForm">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="username">Username *</label>
+                    <input type="text" id="username" name="username" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label for="email">Email *</label>
+                    <input type="email" id="email" name="email" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label for="first_name">First Name *</label>
+                    <input type="text" id="first_name" name="first_name" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label for="last_name">Last Name *</label>
+                    <input type="text" id="last_name" name="last_name" class="form-input" required>
+                </div>
+            </div>
+            <div class="form-info">
+                <p><strong>Note:</strong> The employee will be created with a default password and must change it on first login.</p>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Create Employee</button>
+                <a href="{% url 'get_all_employees' %}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'accounts/js/create_user.js' %}"></script>
+<script>
+    // Set the endpoint URL for this form
+    document.getElementById('createForm').setAttribute('data-endpoint', '/api/accounts/employee/create/');
+</script>
+{% endblock %}

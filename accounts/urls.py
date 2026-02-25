@@ -9,6 +9,7 @@ from .views import (
     TokenRefreshView,
     # Client endpoints
     ClientSelfUpdateView,
+    UserByIdView,
     # Admin endpoints
     CreateAdminView,
     AdminSelfUpdateView,
@@ -18,11 +19,17 @@ from .views import (
     EmployeeSelfUpdateView,
     # Staff endpoints (employee, admin, superadmin)
     StaffUpdateClientView,
+    staffGetUserByIdView,
     # Superadmin endpoints
     CreateSuperadminView,
     SuperadminUpdateAdminView,
     SuperadminUpdateEmployeeView,
     SuperadminUpdateClientView,
+    superadminGetUserByIdView,
+    # Get all endpoints
+    getalladminsview,
+    getallemployeesview,
+    getallclientsview,
 )
 
 urlpatterns = [
@@ -35,6 +42,7 @@ urlpatterns = [
     
     # Client endpoints
     path('client/update/', ClientSelfUpdateView.as_view(), name='client_self_update'),
+    path('user/profile/', UserByIdView.as_view(), name='user_profile'),
     
     # Admin endpoints
     path('admin/create/', CreateAdminView.as_view(), name='create_admin'),
@@ -47,10 +55,17 @@ urlpatterns = [
     
     # Staff endpoints (employee, admin, superadmin can update clients)
     path('staff/client/<int:user_id>/update/', StaffUpdateClientView.as_view(), name='staff_update_client'),
+    path('staff/user/<int:user_id>/', staffGetUserByIdView.as_view(), name='staff_get_user_by_id'),
     
     # Superadmin endpoints
     path('superadmin/create/', CreateSuperadminView.as_view(), name='create_superadmin'),
     path('superadmin/admin/<int:user_id>/update/', SuperadminUpdateAdminView.as_view(), name='superadmin_update_admin'),
     path('superadmin/employee/<int:user_id>/update/', SuperadminUpdateEmployeeView.as_view(), name='superadmin_update_employee'),
     path('superadmin/client/<int:user_id>/update/', SuperadminUpdateClientView.as_view(), name='superadmin_update_client'),
+    path('superadmin/user/<int:user_id>/', superadminGetUserByIdView.as_view(), name='superadmin_get_user_by_id'),
+    
+    # Get all users by role endpoints
+    path('admins/', getalladminsview.as_view(), name='get_all_admins'),
+    path('employees/', getallemployeesview.as_view(), name='get_all_employees'),
+    path('clients/', getallclientsview.as_view(), name='get_all_clients'),
 ]

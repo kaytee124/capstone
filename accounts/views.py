@@ -1,5 +1,7 @@
-from django.shortcuts import render
+from django.shortcuts import render, redirect
+from django.urls import reverse
 from django.utils import timezone
+from django.db.models import Q
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -7,22 +9,29 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, AuthenticationFailed, NotAuthenticated
 from .models import User
 from .mixins import AutoRefreshTokenMixin
 from .permissions import IsSuperadmin, IsAdmin, IsAdminOrSuperadmin, IsClient, IsEmployee, IsStaff
 from .serializers import (
     UserSerializer, 
     UserListSerializer,
+    ClientListSerializer,
+    UserByIdSerializer,
     UserLoginSerializer, 
     ChangePasswordSerializer, 
     UserCreationSerializer,
     ClientSelfUpdateSerializer,
     AdminSelfUpdateSerializer,
+    AccountInactiveError,
+    InvalidCredentialsError,
+    MissingFieldsError,
     EmployeeSelfUpdateSerializer,
     AdminUpdateEmployeeSerializer,
     StaffUpdateClientSerializer,
     SuperadminUpdateUserSerializer,
+    UserUpdateSerializer,
+    staffGetUserByIdSerializer,
     InvalidCredentialsError,
     AccountInactiveError,
     MissingFieldsError
@@ -38,14 +47,58 @@ class userloginview(APIView):
     serializer_class = UserLoginSerializer
     
     def get(self, request):
-        """Render login template"""
-        return render(request, 'accounts/login.html')
+        """Render login template with error messages and redirect URL"""
+        error = request.GET.get('error')
+        message = request.GET.get('message', '')
+        next_url = request.GET.get('next', '')
+        
+        context = {
+            'error': error,
+            'error_message': message,
+            'next_url': next_url
+        }
+        return render(request, 'accounts/login.html', context)
     
     def post(self, request):
         """Handle login API request with custom error codes"""
         try:
             serializer = self.serializer_class(data=request.data)
-            serializer.is_valid(raise_exception=True)
+            
+            # Validate without raising exception first to check for AccountInactiveError
+            if not serializer.is_valid():
+                errors = serializer.errors
+                error_msg = None
+                
+                # Check for AccountInactiveError in non_field_errors
+                if 'non_field_errors' in errors:
+                    error_list = errors['non_field_errors']
+                    if isinstance(error_list, list) and len(error_list) > 0:
+                        error_msg = str(error_list[0])
+                
+                # Also check if the error detail itself contains the message
+                if not error_msg:
+                    for key, value in errors.items():
+                        if isinstance(value, list) and len(value) > 0:
+                            error_str = str(value[0])
+                            if 'deactivated' in error_str.lower() or 'inactive' in error_str.lower():
+                                error_msg = error_str
+                                break
+                        elif isinstance(value, dict):
+                            msg = value.get('message', '')
+                            if 'deactivated' in str(msg).lower() or 'inactive' in str(msg).lower():
+                                error_msg = str(msg)
+                                break
+                
+                # Check if it's an AccountInactiveError message
+                if error_msg and ('deactivated' in error_msg.lower() or 'inactive' in error_msg.lower()):
+                    return Response({
+                        'error_code': 'ACCOUNT_INACTIVE',
+                        'message': 'Your account has been deactivated. Please contact the administrator for assistance.',
+                        'status_code': 401
+                    }, status=status.HTTP_401_UNAUTHORIZED)
+                
+                # For other validation errors, raise exception normally
+                serializer.is_valid(raise_exception=True)
             
             user = serializer.validated_data['user']
             
@@ -59,10 +112,12 @@ class userloginview(APIView):
             
             # Generate JWT tokens
             refresh = RefreshToken.for_user(user)
+            access_token = str(refresh.access_token)
+            refresh_token = str(refresh)
             
             response_data = {
-                'refresh': str(refresh),
-                'access': str(refresh.access_token),
+                'refresh': refresh_token,
+                'access': access_token,
                 'user': UserSerializer(user).data,
                 'requires_password_change': requires_password_change
             }
@@ -71,7 +126,29 @@ class userloginview(APIView):
             if requires_password_change:
                 response_data['message'] = 'Please change your default password'
             
-            return Response(response_data, status=status.HTTP_200_OK)
+            # Create response and set cookies for browser navigation
+            response = Response(response_data, status=status.HTTP_200_OK)
+            
+            # Set HTTP-only cookies for token storage (as backup for browser navigation)
+            # Note: JavaScript will still use localStorage for API calls
+            response.set_cookie(
+                'access_token',
+                access_token,
+                max_age=3600,  # 1 hour (matches ACCESS_TOKEN_LIFETIME)
+                httponly=False,  # Allow JavaScript access
+                samesite='Lax',
+                secure=False  # Set to True in production with HTTPS
+            )
+            response.set_cookie(
+                'refresh_token',
+                refresh_token,
+                max_age=86400,  # 1 day (matches REFRESH_TOKEN_LIFETIME)
+                httponly=False,  # Allow JavaScript access
+                samesite='Lax',
+                secure=False  # Set to True in production with HTTPS
+            )
+            
+            return response
             
         except MissingFieldsError as e:
             # Handle missing fields error
@@ -95,7 +172,7 @@ class userloginview(APIView):
             # Handle inactive account error
             error_detail = e.detail if hasattr(e, 'detail') else {
                 'error_code': 'ACCOUNT_INACTIVE',
-                'message': 'Your account has been deactivated',
+                'message': 'Your account has been deactivated. Please contact the administrator for assistance.',
                 'status_code': 401
             }
             return Response(error_detail, status=status.HTTP_401_UNAUTHORIZED)
@@ -122,21 +199,56 @@ class userloginview(APIView):
 class userlogoutview(APIView):
     permission_classes = [IsAuthenticated]
     
+    def get(self, request):
+        """Handle logout via GET (for sidebar link)"""
+        return self._handle_logout(request)
+    
     def post(self, request):
+        """Handle logout via POST (for API calls)"""
+        return self._handle_logout(request)
+    
+    def _handle_logout(self, request):
         """Handle logout with custom error codes"""
         try:
-            # Check if access token is provided in header
+            # Check if this is a GET request (browser navigation)
+            is_get_request = request.method == 'GET'
+            
+            # Check if access token is provided in header or cookie
             auth_header = request.META.get('HTTP_AUTHORIZATION', '')
-            if not auth_header or not auth_header.startswith('Bearer '):
+            access_token = None
+            
+            if auth_header and auth_header.startswith('Bearer '):
+                access_token = auth_header.split(' ')[1]
+            elif not auth_header:
+                # Try to get from cookie
+                access_token = request.COOKIES.get('access_token')
+                if access_token:
+                    request.META['HTTP_AUTHORIZATION'] = f'Bearer {access_token}'
+            
+            if not access_token:
+                # For GET requests, redirect to login
+                if is_get_request:
+                    return redirect(reverse('user_login') + '?message=Please log in again')
                 return Response({
                     'error_code': 'NO_TOKEN',
                     'message': 'Authentication credentials not provided',
                     'status_code': 401
                 }, status=status.HTTP_401_UNAUTHORIZED)
             
-            # Check if refresh token is provided in body
-            refresh_token = request.data.get('refresh')
+            # Get refresh token from body, query params, or cookies
+            refresh_token = (
+                request.data.get('refresh') or  # POST body
+                request.GET.get('refresh') or  # GET query param
+                request.COOKIES.get('refresh_token')  # Cookie
+            )
+            
             if not refresh_token:
+                # For GET requests without refresh token, just clear cookies and redirect
+                if is_get_request:
+                    response = redirect(reverse('user_login'))
+                    response.delete_cookie('access_token')
+                    response.delete_cookie('refresh_token')
+                    return response
                 return Response({
                     'error_code': 'MISSING_TOKEN',
                     'message': 'Refresh token is required',
@@ -162,9 +274,21 @@ class userlogoutview(APIView):
                     'status_code': 401
                 }, status=status.HTTP_401_UNAUTHORIZED)
             
-            return Response({
-                'message': 'Logged out successfully'
-            }, status=status.HTTP_200_OK)
+            # Create response and clear cookies
+            if is_get_request:
+                # For GET requests, redirect to login page
+                response = redirect(reverse('user_login') + '?message=Logged out successfully')
+            else:
+                # For POST requests, return JSON response
+                response = Response({
+                    'message': 'Logged out successfully'
+                }, status=status.HTTP_200_OK)
+            
+            # Clear token cookies
+            response.delete_cookie('access_token')
+            response.delete_cookie('refresh_token')
+            
+            return response
             
         except Exception as e:
             # Log the error for debugging
@@ -237,8 +361,26 @@ class ChangePasswordView(APIView):
         """Render change password template"""
         return render(request, 'accounts/change_password.html')
     
+    def post(self, request):
+        """Handle change password API request (POST for form submission)"""
+        # request.user is automatically set from the JWT token
+        # This ensures the user can only change their own password
+        serializer = self.serializer_class(data=request.data, context={'user': request.user})
+        serializer.is_valid(raise_exception=True)
+        user = request.user
+        user.set_password(serializer.validated_data['new_password'])
+        user.save()
+        
+        # Clear the requires_password_change flag
+        response_data = {
+            'message': 'Password changed successfully',
+            'password_changed': True
+        }
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+    
     def put(self, request):
-        """Handle change password API request"""
+        """Handle change password API request (PUT for API calls)"""
         # request.user is automatically set from the JWT token
         # This ensures the user can only change their own password
         serializer = self.serializer_class(data=request.data, context={'user': request.user})
@@ -257,6 +399,10 @@ class ClientSelfUpdateView(AutoRefreshTokenMixin, APIView):
     """Client can update their own profile - username, email, first_name, last_name only"""
     permission_classes = [IsAuthenticated, IsClient]
     serializer_class = ClientSelfUpdateSerializer
+    
+    def get(self, request):
+        """Render update profile template"""
+        return render(request, 'accounts/client_update.html')
     
     def patch(self, request):
         """Partial update - only updates fields that are provided"""
@@ -278,21 +424,16 @@ class ClientSelfUpdateView(AutoRefreshTokenMixin, APIView):
         )
         serializer.is_valid(raise_exception=True)
         
-        # Only update fields that are provided and different
-        updated_fields = []
-        for field, value in serializer.validated_data.items():
-            if hasattr(user, field) and getattr(user, field) != value:
-                setattr(user, field, value)
-                updated_fields.append(field)
+        # Use serializer's update method which handles both User and Customer fields
+        serializer.save()
         
-        if updated_fields:
-            user.updated_at = timezone.now()
-            user.updated_by = user
-            user.save()
+        # Refresh user from database to get updated customer data
+        user.refresh_from_db()
+        if hasattr(user, 'customer_profile'):
+            user.customer_profile.refresh_from_db()
         
         return Response({
             'message': 'Profile updated successfully',
-            'updated_fields': updated_fields,
             'user': UserSerializer(user).data
         }, status=status.HTTP_200_OK)
 
@@ -304,6 +445,10 @@ class CreateAdminView(AutoRefreshTokenMixin, APIView):
     """Superadmin creates admin with default password"""
     serializer_class = UserCreationSerializer
     permission_classes = [IsAuthenticated, IsSuperadmin]
+    
+    def get(self, request):
+        """Render create admin template"""
+        return render(request, 'accounts/create_admin.html')
     
     def post(self, request):
         from django.conf import settings
@@ -335,19 +480,23 @@ class CreateAdminView(AutoRefreshTokenMixin, APIView):
         }, status=status.HTTP_201_CREATED)
 
 class AdminSelfUpdateView(AutoRefreshTokenMixin, APIView):
-    """Admin can update their own profile - username, email, first_name, last_name only"""
-    permission_classes = [IsAuthenticated, IsAdmin]
+    """Admin and Superadmin can update their own profile - username, email, first_name, last_name only"""
+    permission_classes = [IsAuthenticated, IsAdminOrSuperadmin]
     serializer_class = AdminSelfUpdateSerializer
+    
+    def get(self, request):
+        """Render admin update profile template"""
+        return render(request, 'accounts/admin_update.html')
     
     def patch(self, request):
         """Partial update - only updates fields that are provided"""
         user = request.user
         
-        # Ensure admin can only update themselves
-        if user.role != 'admin':
+        # Ensure admin or superadmin can only update themselves
+        if user.role not in ['admin', 'superadmin']:
             return Response({
                 'error_code': 'PERMISSION_DENIED',
-                'message': 'Only admins can use this endpoint',
+                'message': 'Only admins and superadmins can use this endpoint',
                 'status_code': 403
             }, status=status.HTTP_403_FORBIDDEN)
         
@@ -373,7 +522,6 @@ class AdminSelfUpdateView(AutoRefreshTokenMixin, APIView):
         
         return Response({
             'message': 'Profile updated successfully',
-            'updated_fields': updated_fields,
             'user': UserSerializer(user).data
         }, status=status.HTTP_200_OK)
 
@@ -385,6 +533,10 @@ class CreateEmployeeView(AutoRefreshTokenMixin, APIView):
     """Superadmin or Admin creates employee with default password"""
     serializer_class = UserCreationSerializer
     permission_classes = [IsAuthenticated, IsAdminOrSuperadmin]
+    
+    def get(self, request):
+        """Render create employee template"""
+        return render(request, 'accounts/create_employee.html')
     
     def post(self, request):
         from django.conf import settings
@@ -420,6 +572,10 @@ class EmployeeSelfUpdateView(AutoRefreshTokenMixin, APIView):
     permission_classes = [IsAuthenticated, IsEmployee]
     serializer_class = EmployeeSelfUpdateSerializer
     
+    def get(self, request):
+        """Render employee update profile template"""
+        return render(request, 'accounts/employee_update.html')
+    
     def patch(self, request):
         """Partial update - only updates fields that are provided"""
         user = request.user
@@ -454,7 +610,6 @@ class EmployeeSelfUpdateView(AutoRefreshTokenMixin, APIView):
         
         return Response({
             'message': 'Profile updated successfully',
-            'updated_fields': updated_fields,
             'user': UserSerializer(user).data
         }, status=status.HTTP_200_OK)
 
@@ -462,6 +617,10 @@ class AdminUpdateEmployeeView(AutoRefreshTokenMixin, APIView):
     """Admin can update employee status (is_active, is_staff) but NOT role or is_superuser"""
     permission_classes = [IsAuthenticated, IsAdmin]
     serializer_class = AdminUpdateEmployeeSerializer
+    
+    def get(self, request, user_id):
+        """Render update employee template"""
+        return render(request, 'accounts/admin_update_employee.html', {'user_id': user_id})
     
     def patch(self, request, user_id):
         """Partial update employee - admin can change status but not role"""
@@ -496,7 +655,6 @@ class AdminUpdateEmployeeView(AutoRefreshTokenMixin, APIView):
         
         return Response({
             'message': 'Employee updated successfully',
-            'updated_fields': updated_fields,
             'user': UserSerializer(employee).data
         }, status=status.HTTP_200_OK)
 
@@ -509,6 +667,10 @@ class CreateSuperadminView(AutoRefreshTokenMixin, APIView):
     """Superadmin creates another superadmin with default password"""
     serializer_class = UserCreationSerializer
     permission_classes = [IsAuthenticated, IsSuperadmin]
+    
+    def get(self, request):
+        """Render create superadmin template"""
+        return render(request, 'accounts/create_superadmin.html')
     
     def post(self, request):
         from django.conf import settings
@@ -544,6 +706,10 @@ class SuperadminUpdateAdminView(AutoRefreshTokenMixin, APIView):
     permission_classes = [IsAuthenticated, IsSuperadmin]
     serializer_class = SuperadminUpdateUserSerializer
     
+    def get(self, request, user_id):
+        """Render update admin template"""
+        return render(request, 'accounts/superadmin_update_admin.html', {'user_id': user_id})
+    
     def patch(self, request, user_id):
         """Partial update admin - only updates fields that are provided"""
         try:
@@ -563,21 +729,14 @@ class SuperadminUpdateAdminView(AutoRefreshTokenMixin, APIView):
         )
         serializer.is_valid(raise_exception=True)
         
-        # Only update fields that are provided and different
-        updated_fields = []
-        for field, value in serializer.validated_data.items():
-            if hasattr(admin, field) and getattr(admin, field) != value:
-                setattr(admin, field, value)
-                updated_fields.append(field)
+        # Use serializer's update method which handles role-based is_staff/is_superuser updates
+        serializer.save()
         
-        if updated_fields:
-            admin.updated_at = timezone.now()
-            admin.updated_by = request.user
-            admin.save()
+        # Refresh admin from database to get updated data
+        admin.refresh_from_db()
         
         return Response({
             'message': 'Admin updated successfully',
-            'updated_fields': updated_fields,
             'user': UserSerializer(admin).data
         }, status=status.HTTP_200_OK)
 
@@ -585,6 +744,10 @@ class SuperadminUpdateEmployeeView(AutoRefreshTokenMixin, APIView):
     """Superadmin can update employee - full control including role promotion"""
     permission_classes = [IsAuthenticated, IsSuperadmin]
     serializer_class = SuperadminUpdateUserSerializer
+    
+    def get(self, request, user_id):
+        """Render update employee template"""
+        return render(request, 'accounts/superadmin_update_employee.html', {'user_id': user_id})
     
     def patch(self, request, user_id):
         """Partial update employee - only updates fields that are provided"""
@@ -605,21 +768,14 @@ class SuperadminUpdateEmployeeView(AutoRefreshTokenMixin, APIView):
         )
         serializer.is_valid(raise_exception=True)
         
-        # Only update fields that are provided and different
-        updated_fields = []
-        for field, value in serializer.validated_data.items():
-            if hasattr(employee, field) and getattr(employee, field) != value:
-                setattr(employee, field, value)
-                updated_fields.append(field)
+        # Use serializer's update method which handles role-based is_staff/is_superuser updates
+        serializer.save()
         
-        if updated_fields:
-            employee.updated_at = timezone.now()
-            employee.updated_by = request.user
-            employee.save()
+        # Refresh employee from database to get updated data
+        employee.refresh_from_db()
         
         return Response({
             'message': 'Employee updated successfully',
-            'updated_fields': updated_fields,
             'user': UserSerializer(employee).data
         }, status=status.HTTP_200_OK)
 
@@ -627,6 +783,10 @@ class StaffUpdateClientView(AutoRefreshTokenMixin, APIView):
     """Staff (employee, admin, superadmin) can update client status - can change is_active, is_staff, but NOT role"""
     permission_classes = [IsAuthenticated, IsStaff]
     serializer_class = StaffUpdateClientSerializer
+    
+    def get(self, request, user_id):
+        """Render update client template"""
+        return render(request, 'accounts/staff_update_client.html', {'user_id': user_id})
     
     def patch(self, request, user_id):
         """Partial update client - only updates fields that are provided (no role changes)"""
@@ -647,28 +807,27 @@ class StaffUpdateClientView(AutoRefreshTokenMixin, APIView):
         )
         serializer.is_valid(raise_exception=True)
         
-        # Only update fields that are provided and different
-        updated_fields = []
-        for field, value in serializer.validated_data.items():
-            if hasattr(client, field) and getattr(client, field) != value:
-                setattr(client, field, value)
-                updated_fields.append(field)
+        # Use serializer's update method which handles both User and Customer fields
+        serializer.save()
         
-        if updated_fields:
-            client.updated_at = timezone.now()
-            client.updated_by = request.user
-            client.save()
+        # Refresh client from database to get updated customer data
+        client.refresh_from_db()
+        if hasattr(client, 'customer_profile'):
+            client.customer_profile.refresh_from_db()
         
         return Response({
             'message': 'Client updated successfully',
-            'updated_fields': updated_fields,
-            'user': UserSerializer(client).data
+            'user': staffGetUserByIdSerializer(client).data
         }, status=status.HTTP_200_OK)
 
 class SuperadminUpdateClientView(AutoRefreshTokenMixin, APIView):
     """Superadmin can update client - full control including role promotion and deactivation"""
     permission_classes = [IsAuthenticated, IsSuperadmin]
     serializer_class = SuperadminUpdateUserSerializer
+    
+    def get(self, request, user_id):
+        """Render update client template"""
+        return render(request, 'accounts/superadmin_update_client.html', {'user_id': user_id})
     
     def patch(self, request, user_id):
         """Partial update client - only updates fields that are provided"""
@@ -689,22 +848,17 @@ class SuperadminUpdateClientView(AutoRefreshTokenMixin, APIView):
         )
         serializer.is_valid(raise_exception=True)
         
-        # Only update fields that are provided and different
-        updated_fields = []
-        for field, value in serializer.validated_data.items():
-            if hasattr(client, field) and getattr(client, field) != value:
-                setattr(client, field, value)
-                updated_fields.append(field)
+        # Use serializer's update method which handles both User and Customer fields
+        serializer.save()
         
-        if updated_fields:
-            client.updated_at = timezone.now()
-            client.updated_by = request.user
-            client.save()
+        # Refresh client from database to get updated customer data
+        client.refresh_from_db()
+        if hasattr(client, 'customer_profile'):
+            client.customer_profile.refresh_from_db()
         
         return Response({
             'message': 'Client updated successfully',
-            'updated_fields': updated_fields,
-            'user': UserSerializer(client).data
+            'user': UserUpdateSerializer(client).data
         }, status=status.HTTP_200_OK)
 
 
@@ -714,9 +868,85 @@ class getalladminsview(AutoRefreshTokenMixin, APIView):
     serializer_class = UserListSerializer
     
     def get(self, request):
-        """Get all admins"""
-        admins = User.objects.filter(role='admin')
-        return Response(UserListSerializer(admins, many=True).data, status=status.HTTP_200_OK)
+        """Get all admins with pagination, filtering, and search - render template or return JSON"""
+        # Check if this is an API request
+        if request.headers.get('Accept', '').startswith('application/json'):
+            return self._get_admins_json(request)
+        else:
+            # Render HTML template
+            return render(request, 'accounts/admins_list.html')
+    
+    def _get_admins_json(self, request):
+        """Get all admins with pagination, filtering, and search"""
+        try:
+            # Base queryset - filter by admin role
+            queryset = User.objects.filter(role='admin')
+            
+            # Apply filters
+            role_filter = request.query_params.get('role')
+            if role_filter:
+                queryset = queryset.filter(role=role_filter)
+            
+            is_active_filter = request.query_params.get('is_active')
+            if is_active_filter is not None:
+                is_active_bool = is_active_filter.lower() in ('true', '1', 'yes')
+                queryset = queryset.filter(is_active=is_active_bool)
+            
+            # Apply search
+            search_term = request.query_params.get('search')
+            if search_term:
+                queryset = queryset.filter(
+                    Q(username__icontains=search_term) |
+                    Q(email__icontains=search_term) |
+                    Q(first_name__icontains=search_term) |
+                    Q(last_name__icontains=search_term)
+                )
+            
+            # Pagination
+            page = int(request.query_params.get('page', 1))
+            page_size = int(request.query_params.get('page_size', 20))
+            
+            # Validate page_size (max 100)
+            if page_size > 100:
+                page_size = 100
+            if page_size < 1:
+                page_size = 20
+            if page < 1:
+                page = 1
+            
+            # Calculate pagination
+            total_count = queryset.count()
+            start = (page - 1) * page_size
+            end = start + page_size
+            
+            # Get paginated results
+            admins = queryset.order_by('id')[start:end]
+            
+            # Serialize data
+            serializer = UserListSerializer(admins, many=True)
+            
+            return Response({
+                'count': total_count,
+                'page': page,
+                'page_size': page_size,
+                'total_pages': (total_count + page_size - 1) // page_size if total_count > 0 else 0,
+                'results': serializer.data
+            }, status=status.HTTP_200_OK)
+            
+        except (AuthenticationFailed, NotAuthenticated, InvalidToken) as e:
+            # Handle authentication errors
+            return Response({
+                'error_code': 'NO_TOKEN' if isinstance(e, NotAuthenticated) else 'INVALID_TOKEN',
+                'message': 'Authentication credentials not provided' if isinstance(e, NotAuthenticated) else 'Invalid or expired token',
+                'status_code': 401
+            }, status=status.HTTP_401_UNAUTHORIZED)
+        except Exception as e:
+            logger.error(f'Failed to retrieve admins: {str(e)}', exc_info=True)
+            return Response({
+                'error_code': 'SERVER_ERROR',
+                'message': 'Failed to retrieve users',
+                'status_code': 500
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class getallemployeesview(AutoRefreshTokenMixin, APIView):
     """Admin or Superadmin can get all employees - returns only first_name, last_name, email, and status"""
@@ -724,16 +954,283 @@ class getallemployeesview(AutoRefreshTokenMixin, APIView):
     serializer_class = UserListSerializer
     
     def get(self, request):
-        """Get all employees"""
-        employees = User.objects.filter(role='employee')
-        return Response(UserListSerializer(employees, many=True).data, status=status.HTTP_200_OK)
+        """Get all employees with pagination, filtering, and search - render template or return JSON"""
+        # Check if this is an API request
+        if request.headers.get('Accept', '').startswith('application/json'):
+            return self._get_employees_json(request)
+        else:
+            # Render HTML template
+            return render(request, 'accounts/employees_list.html')
+    
+    def _get_employees_json(self, request):
+        """Get all employees with pagination, filtering, and search"""
+        try:
+            # Base queryset - filter by employee role
+            queryset = User.objects.filter(role='employee')
+            
+            # Apply filters
+            role_filter = request.query_params.get('role')
+            if role_filter:
+                queryset = queryset.filter(role=role_filter)
+            
+            is_active_filter = request.query_params.get('is_active')
+            if is_active_filter is not None:
+                is_active_bool = is_active_filter.lower() in ('true', '1', 'yes')
+                queryset = queryset.filter(is_active=is_active_bool)
+            
+            # Apply search
+            search_term = request.query_params.get('search')
+            if search_term:
+                queryset = queryset.filter(
+                    Q(username__icontains=search_term) |
+                    Q(email__icontains=search_term) |
+                    Q(first_name__icontains=search_term) |
+                    Q(last_name__icontains=search_term)
+                )
+            
+            # Pagination
+            page = int(request.query_params.get('page', 1))
+            page_size = int(request.query_params.get('page_size', 20))
+            
+            # Validate page_size (max 100)
+            if page_size > 100:
+                page_size = 100
+            if page_size < 1:
+                page_size = 20
+            if page < 1:
+                page = 1
+            
+            # Calculate pagination
+            total_count = queryset.count()
+            start = (page - 1) * page_size
+            end = start + page_size
+            
+            # Get paginated results
+            employees = queryset.order_by('id')[start:end]
+            
+            # Serialize data
+            serializer = UserListSerializer(employees, many=True)
+            
+            return Response({
+                'count': total_count,
+                'page': page,
+                'page_size': page_size,
+                'total_pages': (total_count + page_size - 1) // page_size if total_count > 0 else 0,
+                'results': serializer.data
+            }, status=status.HTTP_200_OK)
+            
+        except (AuthenticationFailed, NotAuthenticated, InvalidToken) as e:
+            # Handle authentication errors
+            return Response({
+                'error_code': 'NO_TOKEN' if isinstance(e, NotAuthenticated) else 'INVALID_TOKEN',
+                'message': 'Authentication credentials not provided' if isinstance(e, NotAuthenticated) else 'Invalid or expired token',
+                'status_code': 401
+            }, status=status.HTTP_401_UNAUTHORIZED)
+        except Exception as e:
+            logger.error(f'Failed to retrieve employees: {str(e)}', exc_info=True)
+            return Response({
+                'error_code': 'SERVER_ERROR',
+                'message': 'Failed to retrieve users',
+                'status_code': 500
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class getallclientsview(AutoRefreshTokenMixin, APIView):
-    """Staff can get all clients - returns only first_name, last_name, email, and status"""
+    """Staff can get all clients - returns first_name, last_name, email, status, and customer fields"""
     permission_classes = [IsAuthenticated, IsStaff]
-    serializer_class = UserListSerializer
+    serializer_class = ClientListSerializer
     
     def get(self, request):
-        """Get all clients"""
-        clients = User.objects.filter(role='client')
-        return Response(UserListSerializer(clients, many=True).data, status=status.HTTP_200_OK)
+        """Get all clients with pagination, filtering, and search - render template or return JSON"""
+        # Check if this is an API request
+        if request.headers.get('Accept', '').startswith('application/json'):
+            return self._get_clients_json(request)
+        else:
+            # Render HTML template
+            return render(request, 'accounts/clients_list.html')
+    
+    def _get_clients_json(self, request):
+        """Get all clients with pagination, filtering, and search"""
+        try:
+            # Base queryset - filter by client role
+            queryset = User.objects.filter(role='client')
+            
+            # Apply filters
+            role_filter = request.query_params.get('role')
+            if role_filter:
+                queryset = queryset.filter(role=role_filter)
+            
+            is_active_filter = request.query_params.get('is_active')
+            if is_active_filter is not None:
+                is_active_bool = is_active_filter.lower() in ('true', '1', 'yes')
+                queryset = queryset.filter(is_active=is_active_bool)
+            
+            # Apply search
+            search_term = request.query_params.get('search')
+            if search_term:
+                queryset = queryset.filter(
+                    Q(username__icontains=search_term) |
+                    Q(email__icontains=search_term) |
+                    Q(first_name__icontains=search_term) |
+                    Q(last_name__icontains=search_term)
+                )
+            
+            # Pagination
+            page = int(request.query_params.get('page', 1))
+            page_size = int(request.query_params.get('page_size', 20))
+            
+            # Validate page_size (max 100)
+            if page_size > 100:
+                page_size = 100
+            if page_size < 1:
+                page_size = 20
+            if page < 1:
+                page = 1
+            
+            # Calculate pagination
+            total_count = queryset.count()
+            start = (page - 1) * page_size
+            end = start + page_size
+            
+            # Get paginated results
+            clients = queryset.order_by('id')[start:end]
+            
+            # Serialize data
+            serializer = ClientListSerializer(clients, many=True)
+            
+            return Response({
+                'count': total_count,
+                'page': page,
+                'page_size': page_size,
+                'total_pages': (total_count + page_size - 1) // page_size if total_count > 0 else 0,
+                'results': serializer.data
+            }, status=status.HTTP_200_OK)
+            
+        except (AuthenticationFailed, NotAuthenticated, InvalidToken) as e:
+            # Handle authentication errors
+            return Response({
+                'error_code': 'NO_TOKEN' if isinstance(e, NotAuthenticated) else 'INVALID_TOKEN',
+                'message': 'Authentication credentials not provided' if isinstance(e, NotAuthenticated) else 'Invalid or expired token',
+                'status_code': 401
+            }, status=status.HTTP_401_UNAUTHORIZED)
+        except Exception as e:
+            logger.error(f'Failed to retrieve clients: {str(e)}', exc_info=True)
+            return Response({
+                'error_code': 'SERVER_ERROR',
+                'message': 'Failed to retrieve users',
+                'status_code': 500
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class UserByIdView(AutoRefreshTokenMixin, APIView):
+    """User can get their own profile - returns first_name, last_name, email, status, and customer fields if user is a client"""
+    permission_classes = [IsAuthenticated]
+    serializer_class = UserByIdSerializer
+
+    def get(self, request):
+        """Get current user's profile - render template for GET, return JSON for API calls"""
+        try:
+            # Check if this is an API request (Accept: application/json header)
+            if request.headers.get('Accept', '').startswith('application/json'):
+                # Optimize query for clients to include customer profile
+                user = request.user
+                if user.role == 'client':
+                    # Use select_related to avoid N+1 query
+                    from .models import User
+                    user = User.objects.select_related('customer_profile').get(id=user.id)
+                
+                return Response({
+                    'message': 'User profile retrieved successfully',
+                    'user': UserByIdSerializer(user).data
+                }, status=status.HTTP_200_OK)
+            else:
+                # Render HTML template
+                return render(request, 'accounts/profile.html', {
+                    'user': request.user
+                })
+        except Exception as e:
+            logger.error(f'Failed to retrieve user profile: {str(e)}', exc_info=True)
+            if request.headers.get('Accept', '').startswith('application/json'):
+                return Response({
+                    'error_code': 'SERVER_ERROR',
+                    'message': 'Failed to retrieve user profile',
+                    'status_code': 500
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            else:
+                return render(request, 'accounts/profile.html', {
+                    'error': 'Failed to load profile'
+                })
+
+class staffGetUserByIdView(AutoRefreshTokenMixin, APIView):
+    """Staff (employee, admin, superadmin) can get user by id"""
+    permission_classes = [IsAuthenticated, IsStaff]
+    serializer_class = staffGetUserByIdSerializer
+
+    def get(self, request, user_id):
+        """Get user by id - render template for HTML, return JSON for API"""
+        # Check if this is an API request
+        if request.headers.get('Accept', '').startswith('application/json'):
+            return self._get_user_json(request, user_id)
+        else:
+            # Render HTML template
+            return render(request, 'accounts/staff_user_by_id.html', {'user_id': user_id})
+    
+    def _get_user_json(self, request, user_id):
+        """Get user by id - return JSON"""
+        try:
+            # Use select_related to optimize query for customer profile
+            user = User.objects.select_related('customer_profile').get(id=user_id)
+        except User.DoesNotExist:
+            return Response({
+                'error_code': 'NOT_FOUND',
+                'message': 'User not found',
+                'status_code': 404
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f'Failed to retrieve user: {str(e)}', exc_info=True)
+            return Response({
+                'error_code': 'SERVER_ERROR',
+                'message': 'Failed to retrieve user',
+                'status_code': 500
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        return Response({
+            'message': 'User profile retrieved successfully',
+            'user': staffGetUserByIdSerializer(user).data
+        }, status=status.HTTP_200_OK)
+
+class superadminGetUserByIdView(AutoRefreshTokenMixin, APIView):
+    """Superadmin can get user by id - returns full user details"""
+    permission_classes = [IsAuthenticated, IsSuperadmin]
+    serializer_class = UserUpdateSerializer
+
+    def get(self, request, user_id):
+        """Get user by id - render template for HTML, return JSON for API"""
+        # Check if this is an API request
+        if request.headers.get('Accept', '').startswith('application/json'):
+            return self._get_user_json(request, user_id)
+        else:
+            # Render HTML template
+            return render(request, 'accounts/superadmin_user_by_id.html', {'user_id': user_id})
+    
+    def _get_user_json(self, request, user_id):
+        """Get user by id - return JSON"""
+        try:
+            # Use select_related to optimize query for customer profile
+            user = User.objects.select_related('customer_profile').get(id=user_id)
+        except User.DoesNotExist:
+            return Response({
+                'error_code': 'NOT_FOUND',
+                'message': 'User not found',
+                'status_code': 404
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f'Failed to retrieve user: {str(e)}', exc_info=True)
+            return Response({
+                'error_code': 'SERVER_ERROR',
+                'message': 'Failed to retrieve user',
+                'status_code': 500
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        return Response({
+            'message': 'User profile retrieved successfully',
+            'user': UserUpdateSerializer(user).data
+        }, status=status.HTTP_200_OK)
