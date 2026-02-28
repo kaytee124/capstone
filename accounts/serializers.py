@@ -131,11 +131,13 @@ class ClientListSerializer(serializers.ModelSerializer):
     total_orders = serializers.SerializerMethodField()
     total_spent = serializers.SerializerMethodField()
     last_order_date = serializers.SerializerMethodField()
+    customer = serializers.SerializerMethodField()
+    username = serializers.CharField(read_only=True)
     
     class Meta:
         model = User
-        fields = ['id', 'first_name', 'last_name', 'email', 'status', 'phone_number', 'whatsapp_number', 'address', 'preferred_contact_method', 'notes', 'total_orders', 'total_spent', 'last_order_date']
-        read_only_fields = ['id', 'first_name', 'last_name', 'email', 'status', 'phone_number', 'whatsapp_number', 'address', 'preferred_contact_method', 'notes', 'total_orders', 'total_spent', 'last_order_date']
+        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'status', 'phone_number', 'whatsapp_number', 'address', 'preferred_contact_method', 'notes', 'total_orders', 'total_spent', 'last_order_date', 'customer']
+        read_only_fields = ['id', 'username', 'first_name', 'last_name', 'email', 'status', 'phone_number', 'whatsapp_number', 'address', 'preferred_contact_method', 'notes', 'total_orders', 'total_spent', 'last_order_date', 'customer']
     
     def get_status(self, obj):
         """Return 'active' or 'inactive' based on is_active field"""
@@ -201,6 +203,12 @@ class ClientListSerializer(serializers.ModelSerializer):
         """Get last order date from customer profile - only if user is a client"""
         if obj.role == 'client' and hasattr(obj, 'customer_profile') and obj.customer_profile.last_order_date:
             return obj.customer_profile.last_order_date.isoformat()
+        return None
+    
+    def get_customer(self, obj):
+        """Get customer ID from customer profile - only if user is a client"""
+        if obj.role == 'client' and hasattr(obj, 'customer_profile') and obj.customer_profile:
+            return {'id': obj.customer_profile.id}
         return None
 
 # Custom exception classes for login errors

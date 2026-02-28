@@ -124,6 +124,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'Accept': 'application/json',
                         'X-CSRFToken': getCookie('csrftoken')
                     },
                     body: JSON.stringify({
@@ -132,7 +133,28 @@ document.addEventListener('DOMContentLoaded', function() {
                     })
                 });
                 
-                const data = await response.json();
+                // Check if response is JSON
+                const contentType = response.headers.get('content-type');
+                let data;
+                
+                if (contentType && contentType.includes('application/json')) {
+                    data = await response.json();
+                } else {
+                    // Response is not JSON (might be HTML redirect)
+                    const text = await response.text();
+                    console.error('Non-JSON response:', text.substring(0, 200));
+                    
+                    // If it's a redirect or HTML, show appropriate error
+                    if (response.redirected || response.status === 302 || response.status === 301) {
+                        showAlert('Session expired. Please refresh the page and try again.', 'error');
+                    } else {
+                        showAlert('Invalid response from server. Please try again.', 'error');
+                    }
+                    
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Sign In';
+                    return;
+                }
                 
                 if (response.ok) {
                     // Store tokens - use TokenManager if available (from api.js), otherwise use localStorage directly
@@ -270,7 +292,42 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             } catch (error) {
                 console.error('Login error:', error);
-                showAlert('An error occurred. Please try again.');
+                
+                // Try to extract more specific error information
+                let errorMessage = 'An error occurred. Please try again.';
+                
+                // Check if error has a response (network error)
+                if (error.response) {
+                    try {
+                        const errorData = await error.response.json();
+                        if (errorData.error_code) {
+                            errorMessage = errorData.message || errorMessage;
+                        } else if (errorData.message) {
+                            errorMessage = errorData.message;
+                        } else if (errorData.detail) {
+                            errorMessage = typeof errorData.detail === 'string' ? errorData.detail : 'Invalid credentials';
+                        }
+                    } catch (e) {
+                        // If response is not JSON, try to get text
+                        try {
+                            const text = await error.response.text();
+                            if (text) {
+                                errorMessage = 'Server error: ' + text.substring(0, 100);
+                            }
+                        } catch (e2) {
+                            // Use default message
+                        }
+                    }
+                } else if (error.message) {
+                    // Network error or other error
+                    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                        errorMessage = 'Network error. Please check your connection and try again.';
+                    } else {
+                        errorMessage = error.message;
+                    }
+                }
+                
+                showAlert(errorMessage);
                 
                 // Re-enable submit button
                 submitBtn.disabled = false;

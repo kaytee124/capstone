@@ -1,0 +1,98 @@
+{% extends 'accounts/base.html' %}
+{% load static %}
+
+{% block title %}Update Order - Laundry Management System{% endblock %}
+{% block page_title %}Update Order{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'accounts/css/forms.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <div class="form-card">
+        <h2>Update Order</h2>
+        <form id="updateOrderForm">
+            {% csrf_token %}
+            
+            <!-- Order Basic Information -->
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="order_number">Order Number</label>
+                    <input type="text" id="order_number" name="order_number" class="form-input" readonly>
+                </div>
+                <div class="form-group">
+                    <label for="customer_name">Customer</label>
+                    <input type="text" id="customer_name" name="customer_name" class="form-input" readonly>
+                </div>
+                <div class="form-group" id="assignedToGroup">
+                    <label for="assigned_to">Assign To</label>
+                    <select id="assigned_to" name="assigned_to" class="form-input">
+                        <option value="">Not assigned</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="order_status">Order Status</label>
+                    <select id="order_status" name="order_status" class="form-input">
+                        <option value="pending">Pending</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="ready">Ready</option>
+                        <option value="completed">Completed</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="payment_status">Payment Status</label>
+                    <select id="payment_status" name="payment_status" class="form-input">
+                        <option value="pending">Pending</option>
+                        <option value="partially_paid">Partially Paid</option>
+                        <option value="paid">Paid</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="total_amount">Total Amount</label>
+                    <input type="text" id="total_amount" name="total_amount" class="form-input" readonly>
+                </div>
+                <div class="form-group">
+                    <label for="amount_paid">Amount Paid</label>
+                    <input type="text" id="amount_paid" name="amount_paid" class="form-input" readonly>
+                    <small style="color: #6c757d; font-size: 0.875rem;">Amount paid cannot be updated from this form</small>
+                </div>
+                <div class="form-group">
+                    <label for="discount_amount">Discount Amount</label>
+                    <input type="number" id="discount_amount" name="discount_amount" class="form-input" step="0.01" min="0" value="0">
+                </div>
+                <div class="form-group">
+                    <label for="pickup_date">Pickup Date</label>
+                    <input type="date" id="pickup_date" name="pickup_date" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label for="delivery_date">Delivery Date</label>
+                    <input type="date" id="delivery_date" name="delivery_date" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label for="estimated_completion_date">Estimated Completion Date</label>
+                    <input type="date" id="estimated_completion_date" name="estimated_completion_date" class="form-input">
+                </div>
+                <div class="form-group full-width">
+                    <label for="delivery_notes">Delivery Notes</label>
+                    <textarea id="delivery_notes" name="delivery_notes" class="form-input" rows="3"></textarea>
+                </div>
+                <div class="form-group full-width">
+                    <label for="special_instructions">Special Instructions</label>
+                    <textarea id="special_instructions" name="special_instructions" class="form-input" rows="3"></textarea>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Update Order</button>
+                <a href="{% url 'orders_list' %}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'orders/js/order_update.js' %}"></script>
+{% endblock %}

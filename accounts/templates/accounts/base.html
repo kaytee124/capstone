@@ -45,6 +45,27 @@
                     </ul>
                 </div>
 
+                <!-- Orders Section (visible to all authenticated users) -->
+                <div class="nav-section" id="ordersSection" style="display: none;">
+                    <h3 class="nav-section-title">Orders</h3>
+                    <ul class="nav-list">
+                        <li><a href="{% url 'orders_list' %}" class="nav-link {% if request.resolver_match.url_name == 'orders_list' %}active{% endif %}" id="ordersListLink">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 11l3 3L22 4"></path>
+                                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+                            </svg>
+                            <span>All Orders</span>
+                        </a></li>
+                        <li id="createOrderLink" style="display: none;"><a href="{% url 'order_create' %}" class="nav-link {% if request.resolver_match.url_name == 'order_create' %}active{% endif %}">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
+                            <span>Create Order</span>
+                        </a></li>
+                    </ul>
+                </div>
+
                 <!-- Client Section -->
                 <div class="nav-section" id="clientSection" style="display: none;">
                     <h3 class="nav-section-title">Client</h3>

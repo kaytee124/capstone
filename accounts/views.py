@@ -1051,8 +1051,8 @@ class getallclientsview(AutoRefreshTokenMixin, APIView):
     def _get_clients_json(self, request):
         """Get all clients with pagination, filtering, and search"""
         try:
-            # Base queryset - filter by client role
-            queryset = User.objects.filter(role='client')
+            # Base queryset - filter by client role, use select_related to optimize customer_profile queries
+            queryset = User.objects.filter(role='client').select_related('customer_profile')
             
             # Apply filters
             role_filter = request.query_params.get('role')

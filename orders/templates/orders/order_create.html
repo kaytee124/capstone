@@ -1,0 +1,165 @@
+{% extends 'accounts/base.html' %}
+{% load static %}
+
+{% block title %}Create Order - Laundry Management System{% endblock %}
+{% block page_title %}Create Order{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'accounts/css/forms.css' %}">
+<style>
+    .order-items-section {
+        margin-top: 2rem;
+        padding: 1.5rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+    .order-item {
+        background: white;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        border-radius: 8px;
+        border: 1px solid #dee2e6;
+    }
+    .order-item-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+    .order-item-header h4 {
+        margin: 0;
+        color: #495057;
+    }
+    .remove-item-btn {
+        background: #dc3545;
+        color: white;
+        border: none;
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.875rem;
+    }
+    .remove-item-btn:hover {
+        background: #c82333;
+    }
+    .add-item-btn {
+        background: #28a745;
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-top: 1rem;
+    }
+    .add-item-btn:hover {
+        background: #218838;
+    }
+    .total-section {
+        margin-top: 1.5rem;
+        padding: 1rem;
+        background: white;
+        border-radius: 8px;
+        border: 2px solid #007bff;
+    }
+    .total-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.5rem 0;
+        font-size: 1.1rem;
+    }
+    .total-row.final {
+        font-weight: bold;
+        font-size: 1.25rem;
+        border-top: 2px solid #dee2e6;
+        padding-top: 1rem;
+        margin-top: 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <div class="form-card">
+        <h2>Create Order</h2>
+        <form id="createOrderForm">
+            {% csrf_token %}
+            
+            <!-- Order Basic Information -->
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="customer_id">Customer <span class="required">*</span></label>
+                    <select id="customer_id" name="customer_id" class="form-input" required>
+                        <option value="">Loading customers...</option>
+                    </select>
+                </div>
+                <div class="form-group" id="assignedToGroup" style="display: none;">
+                    <label for="assigned_to">Assign To</label>
+                    <select id="assigned_to" name="assigned_to" class="form-input">
+                        <option value="">Not assigned</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="discount_amount">Discount Amount</label>
+                    <input type="number" id="discount_amount" name="discount_amount" class="form-input" step="0.01" min="0" value="0">
+                </div>
+                <div class="form-group">
+                    <label for="pickup_date">Pickup Date</label>
+                    <input type="date" id="pickup_date" name="pickup_date" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label for="delivery_date">Delivery Date</label>
+                    <input type="date" id="delivery_date" name="delivery_date" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label for="estimated_completion_date">Estimated Completion Date</label>
+                    <input type="date" id="estimated_completion_date" name="estimated_completion_date" class="form-input">
+                </div>
+                <div class="form-group full-width">
+                    <label for="delivery_notes">Delivery Notes</label>
+                    <textarea id="delivery_notes" name="delivery_notes" class="form-input" rows="3"></textarea>
+                </div>
+                <div class="form-group full-width">
+                    <label for="special_instructions">Special Instructions</label>
+                    <textarea id="special_instructions" name="special_instructions" class="form-input" rows="3"></textarea>
+                </div>
+            </div>
+
+            <!-- Order Items Section -->
+            <div class="order-items-section">
+                <h3>Order Items</h3>
+                <div id="orderItemsContainer">
+                    <!-- Order items will be added here dynamically -->
+                </div>
+                <button type="button" class="add-item-btn" id="addItemBtn">
+                    + Add Item
+                </button>
+            </div>
+
+            <!-- Total Section -->
+            <div class="total-section">
+                <div class="total-row">
+                    <span>Subtotal:</span>
+                    <span id="subtotal">₦0.00</span>
+                </div>
+                <div class="total-row">
+                    <span>Discount:</span>
+                    <span id="discount">₦0.00</span>
+                </div>
+                <div class="total-row final">
+                    <span>Total Amount:</span>
+                    <span id="totalAmount">₦0.00</span>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Create Order</button>
+                <a href="{% url 'orders_list' %}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'orders/js/order_create.js' %}"></script>
+{% endblock %}

@@ -31,6 +31,56 @@ document.addEventListener('DOMContentLoaded', function() {
     const userData = localStorage.getItem('user');
     const userRole = userData ? JSON.parse(userData).role : null;
     
+    // Orders section visible to all authenticated users
+    if (userRole) {
+        const ordersSection = document.getElementById('ordersSection');
+        if (ordersSection) {
+            ordersSection.style.display = 'block';
+            
+            // Show "Create Order" link only for admin, superadmin, and employee
+            if (['admin', 'superadmin', 'employee'].includes(userRole)) {
+                const createOrderLink = document.getElementById('createOrderLink');
+                if (createOrderLink) createOrderLink.style.display = 'block';
+            }
+            
+            // Ensure orders links work with authentication
+            // Since tokens are stored in cookies by the login view, regular href navigation will work
+            // But we can also intercept clicks to ensure tokens are available
+            const ordersListLink = document.getElementById('ordersListLink');
+            if (ordersListLink) {
+                ordersListLink.addEventListener('click', function(e) {
+                    // Check if token exists, if not, redirect to login
+                    const accessToken = typeof TokenManager !== 'undefined' 
+                        ? TokenManager.getAccessToken() 
+                        : localStorage.getItem('access_token');
+                    
+                    if (!accessToken) {
+                        e.preventDefault();
+                        window.location.href = '/api/accounts/login/?next=' + encodeURIComponent(this.href);
+                    }
+                    // Otherwise, let the link work normally (cookies will handle auth)
+                });
+            }
+            
+            const createOrderLink = document.getElementById('createOrderLink');
+            if (createOrderLink) {
+                const linkElement = createOrderLink.querySelector('a');
+                if (linkElement) {
+                    linkElement.addEventListener('click', function(e) {
+                        const accessToken = typeof TokenManager !== 'undefined' 
+                            ? TokenManager.getAccessToken() 
+                            : localStorage.getItem('access_token');
+                        
+                        if (!accessToken) {
+                            e.preventDefault();
+                            window.location.href = '/api/accounts/login/?next=' + encodeURIComponent(this.href);
+                        }
+                    });
+                }
+            }
+        }
+    }
+    
     if (userRole === 'client') {
         const clientSection = document.getElementById('clientSection');
         if (clientSection) clientSection.style.display = 'block';

@@ -44,9 +44,24 @@ def custom_exception_handler(exc, context):
         # Handle authentication errors
         elif isinstance(exc, (NotAuthenticated, AuthenticationFailed)):
             if is_html_request:
+                # Prevent redirect loop - don't redirect if already on login page
+                current_path = request.get_full_path()
+                login_path = reverse('user_login')
+                
+                # Check if we're already on the login page or if next points to login
+                if login_path in current_path or (request.GET.get('next') and login_path in request.GET.get('next', '')):
+                    # Already on login page, just return the response without redirect
+                    response.data = {
+                        'error_code': 'NO_TOKEN',
+                        'message': 'Authentication required. Please log in to continue.',
+                        'status_code': 401
+                    }
+                    response.status_code = status.HTTP_401_UNAUTHORIZED
+                    return response
+                
                 # Store the intended URL for redirect after login
                 intended_url = request.get_full_path()
-                login_url = f"{reverse('user_login')}?next={intended_url}&error=NO_TOKEN&message=Authentication required. Please log in to continue."
+                login_url = f"{login_path}?next={intended_url}&error=NO_TOKEN&message=Authentication required. Please log in to continue."
                 return redirect(login_url)
             
             response.data = {
@@ -58,8 +73,21 @@ def custom_exception_handler(exc, context):
             
         elif isinstance(exc, (InvalidToken, TokenError)):
             if is_html_request:
+                # Prevent redirect loop - don't redirect if already on login page
+                current_path = request.get_full_path()
+                login_path = reverse('user_login')
+                
+                if login_path in current_path or (request.GET.get('next') and login_path in request.GET.get('next', '')):
+                    response.data = {
+                        'error_code': 'INVALID_TOKEN',
+                        'message': 'Your session has expired. Please log in again.',
+                        'status_code': 401
+                    }
+                    response.status_code = status.HTTP_401_UNAUTHORIZED
+                    return response
+                
                 intended_url = request.get_full_path()
-                login_url = f"{reverse('user_login')}?next={intended_url}&error=INVALID_TOKEN&message=Your session has expired. Please log in again."
+                login_url = f"{login_path}?next={intended_url}&error=INVALID_TOKEN&message=Your session has expired. Please log in again."
                 return redirect(login_url)
             
             response.data = {
