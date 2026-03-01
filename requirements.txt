@@ -1,2 +1,4 @@
 djangorestframework-simplejwt
 mysqlclient
+django-environ
+requests

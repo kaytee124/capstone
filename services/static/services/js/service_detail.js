@@ -60,7 +60,7 @@ function renderServiceDetail(service) {
     
     document.getElementById('name').textContent = service.name || '-';
     document.getElementById('category').textContent = service.category || '-';
-    document.getElementById('price').textContent = `₦${parseFloat(service.price || 0).toFixed(2)}`;
+    document.getElementById('price').textContent = `GHS ${parseFloat(service.price || 0).toFixed(2)}`;
     document.getElementById('unit').textContent = service.unit || '-';
     document.getElementById('estimatedDays').textContent = `${service.estimated_days || '-'} days`;
     document.getElementById('status').textContent = service.is_active ? 'Active' : 'Inactive';

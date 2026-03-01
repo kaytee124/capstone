@@ -1,0 +1,104 @@
+{% extends 'accounts/base.html' %}
+{% load static %}
+
+{% block extra_js %}
+<script src="{% static 'accounts/js/api.js' %}"></script>
+{% endblock %}
+
+{% block title %}Payment Status - Laundry Management System{% endblock %}
+{% block page_title %}Payment Status{% endblock %}
+
+{% block extra_css %}
+<style>
+    .payment-status-container {
+        max-width: 600px;
+        margin: 2rem auto;
+        padding: 2rem;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    .payment-status-icon {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+    }
+    .payment-status-icon.success {
+        color: #22c55e;
+    }
+    .payment-status-icon.error {
+        color: #ef4444;
+    }
+    .payment-status-message {
+        font-size: 1.25rem;
+        margin-bottom: 1.5rem;
+        color: #1e293b;
+    }
+    .payment-status-message.success {
+        color: #22c55e;
+    }
+    .payment-status-message.error {
+        color: #ef4444;
+    }
+    .redirect-message {
+        color: #64748b;
+        font-size: 0.875rem;
+        margin-top: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="payment-status-container">
+    {% if success %}
+    <div class="payment-status-icon success">✓</div>
+    <div class="payment-status-message success">Payment Successful!</div>
+    <p>Your payment has been processed successfully. You will be redirected to your order page shortly.</p>
+    {% else %}
+    <div class="payment-status-icon error">✕</div>
+    <div class="payment-status-message error">Payment Failed</div>
+    <p>{{ message|default:"An error occurred while processing your payment." }}</p>
+    {% endif %}
+    <div class="redirect-message">
+        <p>If you are not redirected automatically, <a href="{% url 'orders_list' %}">click here</a> to return to your orders.</p>
+    </div>
+</div>
+
+<script>
+    // Sync tokens to cookies before redirecting
+    if (typeof TokenManager !== 'undefined') {
+        const accessToken = TokenManager.getAccessToken();
+        const refreshToken = TokenManager.getRefreshToken();
+        if (accessToken) {
+            TokenManager.setCookie('access_token', accessToken, 3600);
+        }
+        if (refreshToken) {
+            TokenManager.setCookie('refresh_token', refreshToken, 86400);
+        }
+    } else {
+        // Fallback if TokenManager not loaded yet
+        const accessToken = localStorage.getItem('access_token');
+        const refreshToken = localStorage.getItem('refresh_token');
+        if (accessToken) {
+            document.cookie = `access_token=${encodeURIComponent(accessToken)}; max-age=3600; path=/; SameSite=Lax`;
+        }
+        if (refreshToken) {
+            document.cookie = `refresh_token=${encodeURIComponent(refreshToken)}; max-age=86400; path=/; SameSite=Lax`;
+        }
+    }
+    
+    // Auto-redirect after 2 seconds if payment was successful
+    {% if success %}
+    setTimeout(function() {
+        const orderId = {{ order_id|default:"null" }};
+        if (orderId) {
+            // Redirect to order detail page - tokens are now in cookies
+            window.location.href = `/api/orders/${orderId}/`;
+        } else {
+            // Fallback to orders list
+            window.location.href = '{% url "orders_list" %}';
+        }
+    }, 2000);
+    {% endif %}
+</script>
+{% endblock %}

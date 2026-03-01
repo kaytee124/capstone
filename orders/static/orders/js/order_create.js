@@ -171,6 +171,19 @@ async function loadStaff(currentUserId, currentUserRole) {
             currentUser = JSON.parse(userStr);
         }
         
+        // If current user is superadmin, add them FIRST (before loading employees/admins)
+        // Superadmins are not included in the employees or admins API endpoints, so we must add them manually
+        if (currentUser && currentUserRole === 'superadmin') {
+            const option = document.createElement('option');
+            option.value = currentUser.id;
+            const label = `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim() || currentUser.username || 'Unknown';
+            option.textContent = `${label} (Superadmin) - You`;
+            option.selected = true;
+            // Insert after "Not assigned" option
+            assignedSelect.insertBefore(option, assignedSelect.firstChild.nextSibling);
+            console.log('Added superadmin to assign to list:', currentUser.id, label);
+        }
+        
         // Load employees (all roles can see employees)
         let employeesRes;
         try {
@@ -189,6 +202,10 @@ async function loadStaff(currentUserId, currentUserRole) {
         if (employeesRes.ok) {
             const employeesData = await employeesRes.json();
             employeesData.results.forEach(emp => {
+                // Skip if this is the current superadmin (already added)
+                if (currentUser && currentUserRole === 'superadmin' && emp.id === currentUser.id) {
+                    return;
+                }
                 const option = document.createElement('option');
                 option.value = emp.id;
                 const isCurrentUser = currentUser && emp.id === currentUser.id;
@@ -220,14 +237,14 @@ async function loadStaff(currentUserId, currentUserRole) {
             if (adminsRes.ok) {
                 const adminsData = await adminsRes.json();
                 adminsData.results.forEach(admin => {
+                    // Skip if this is the current superadmin (already added)
+                    if (currentUser && admin.id === currentUser.id) {
+                        return;
+                    }
                     const option = document.createElement('option');
                     option.value = admin.id;
-                    const isCurrentUser = currentUser && admin.id === currentUser.id;
                     const label = `${admin.first_name || ''} ${admin.last_name || ''}`.trim() || admin.username || 'Unknown';
-                    option.textContent = `${label} (Admin)${isCurrentUser ? ' - You' : ''}`;
-                    if (isCurrentUser && !assignedSelect.value) {
-                        option.selected = true; // Pre-select current user if nothing else is selected
-                    }
+                    option.textContent = `${label} (Admin)`;
                     assignedSelect.appendChild(option);
                 });
             }
@@ -253,25 +270,7 @@ async function loadStaff(currentUserId, currentUserRole) {
             }
         }
         
-        // If current user is superadmin and not in the list yet, add them
-        if (currentUser && currentUserRole === 'superadmin') {
-            const existingOption = Array.from(assignedSelect.options).find(opt => opt.value == currentUser.id);
-            if (!existingOption) {
-                const option = document.createElement('option');
-                option.value = currentUser.id;
-                const label = `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim() || currentUser.username || 'Unknown';
-                option.textContent = `${label} (Superadmin) - You`;
-                option.selected = true;
-                // Insert after "Not assigned" option
-                assignedSelect.insertBefore(option, assignedSelect.firstChild.nextSibling);
-            } else {
-                // If superadmin is already in the list, make sure it's marked as "You" and pre-selected
-                existingOption.textContent = existingOption.textContent.replace(/ \((Admin|Employee)\)$/, ' (Superadmin) - You');
-                if (!assignedSelect.value) {
-                    existingOption.selected = true;
-                }
-            }
-        }
+        // Superadmin was already added at the beginning, so no need to add again here
     } catch (error) {
         console.error('Error loading staff:', error);
     }
@@ -350,7 +349,7 @@ function addOrderItem() {
             window.servicesList.forEach(service => {
                 const option = document.createElement('option');
                 option.value = service.id;
-                option.textContent = `${service.name} - ₦${parseFloat(service.price).toFixed(2)}/${service.unit || 'item'}`;
+                option.textContent = `${service.name} - GHS ${parseFloat(service.price).toFixed(2)}/${service.unit || 'item'}`;
                 option.dataset.price = service.price;
                 option.dataset.name = service.name;
                 option.dataset.description = service.description || '';
@@ -365,7 +364,7 @@ function addOrderItem() {
                     window.servicesList.forEach(service => {
                         const option = document.createElement('option');
                         option.value = service.id;
-                        option.textContent = `${service.name} - ₦${parseFloat(service.price).toFixed(2)}/${service.unit || 'item'}`;
+                        option.textContent = `${service.name} - GHS ${parseFloat(service.price).toFixed(2)}/${service.unit || 'item'}`;
                         option.dataset.price = service.price;
                         option.dataset.name = service.name;
                         option.dataset.description = service.description || '';
@@ -430,7 +429,7 @@ function calculateItemSubtotal(itemId) {
         const quantity = parseFloat(quantityInput.value) || 0;
         const unitPrice = parseFloat(unitPriceInput.value) || 0;
         const subtotal = quantity * unitPrice;
-        subtotalInput.value = `₦${subtotal.toFixed(2)}`;
+        subtotalInput.value = `GHS ${subtotal.toFixed(2)}`;
     }
 }
 
@@ -452,9 +451,9 @@ function calculateTotals() {
     const discount = parseFloat(document.getElementById('discount_amount').value) || 0;
     const total = subtotal - discount;
     
-    document.getElementById('subtotal').textContent = `₦${subtotal.toFixed(2)}`;
-    document.getElementById('discount').textContent = `₦${discount.toFixed(2)}`;
-    document.getElementById('totalAmount').textContent = `₦${total.toFixed(2)}`;
+    document.getElementById('subtotal').textContent = `GHS ${subtotal.toFixed(2)}`;
+    document.getElementById('discount').textContent = `GHS ${discount.toFixed(2)}`;
+    document.getElementById('totalAmount').textContent = `GHS ${total.toFixed(2)}`;
 }
 
 function removeOrderItem(itemId) {

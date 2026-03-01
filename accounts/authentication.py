@@ -55,8 +55,18 @@ class AutoRefreshJWTAuthentication(JWTAuthentication):
             raise original_error
         
         try:
-            # Try to refresh the token
+            # For auto-refresh, we don't want to rotate tokens (which would blacklist the old one)
+            # Instead, we'll manually refresh without rotation
+            # This allows the refresh token to be reused until it expires
             refresh = RefreshToken(refresh_token)
+            
+            # Check if token is blacklisted
+            try:
+                refresh.check_blacklist()
+            except Exception:
+                # Token is blacklisted, can't use it
+                raise InvalidToken('Token is blacklisted')
+            
             new_access_token = refresh.access_token
             
             # Get user from the refresh token
@@ -70,20 +80,10 @@ class AutoRefreshJWTAuthentication(JWTAuthentication):
                 try:
                     user = User.objects.get(id=user_id)
                     
-                    # Store new tokens in request for response headers
+                    # Store new access token in request for response headers
+                    # Don't rotate refresh token on auto-refresh - keep using the same one
                     request._new_access_token = str(new_access_token)
-                    
-                    # Handle token rotation - get new refresh token if rotation is enabled
-                    from django.conf import settings
-                    if settings.SIMPLE_JWT.get('ROTATE_REFRESH_TOKENS', False):
-                        try:
-                            refresh.blacklist()  # Blacklist old refresh token
-                        except Exception:
-                            pass  # Blacklist might not be configured
-                        new_refresh = RefreshToken.for_user(user)
-                        request._new_refresh_token = str(new_refresh)
-                    else:
-                        request._new_refresh_token = None
+                    request._new_refresh_token = None  # No rotation on auto-refresh
                     
                     # Return authenticated user
                     return (user, None)  # Return tuple (user, token)
@@ -91,6 +91,44 @@ class AutoRefreshJWTAuthentication(JWTAuthentication):
                     raise InvalidToken('User not found')
             else:
                 raise InvalidToken('Invalid token payload')
+            
+            if serializer.is_valid():
+                # Serializer handles token rotation and blacklisting automatically
+                validated_data = serializer.validated_data
+                new_access_token = validated_data.get('access')
+                new_refresh_token = validated_data.get('refresh')  # Will be None if rotation disabled
+                
+                # Decode the new access token to get user_id
+                from rest_framework_simplejwt.state import token_backend
+                try:
+                    # Decode the new access token to get user info
+                    validated_token = token_backend.decode(new_access_token, verify=True)
+                    user_id = validated_token.get('user_id')
+                    
+                    if user_id:
+                        from django.contrib.auth import get_user_model
+                        User = get_user_model()
+                        try:
+                            user = User.objects.get(id=user_id)
+                            
+                            # Store new tokens in request for response headers
+                            request._new_access_token = new_access_token
+                            # For auto-refresh, don't rotate refresh token to avoid blacklisting issues
+                            # Only rotate on explicit refresh endpoint calls
+                            request._new_refresh_token = None  # Don't rotate on auto-refresh
+                            
+                            # Return authenticated user
+                            return (user, None)  # Return tuple (user, token)
+                        except User.DoesNotExist:
+                            raise InvalidToken('User not found')
+                    else:
+                        raise InvalidToken('Invalid token payload')
+                except Exception as decode_error:
+                    logger.error(f'Failed to decode new access token: {str(decode_error)}', exc_info=True)
+                    raise InvalidToken('Failed to decode tokens')
+            else:
+                # Serializer validation failed
+                raise InvalidToken('Invalid refresh token')
                 
         except TokenError as e:
             # Refresh token is also invalid/expired

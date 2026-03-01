@@ -133,8 +133,8 @@ function renderOrders(orders) {
             <tr>
                 <td>${order.order_number || '-'}</td>
                 <td>${order.customer_username || order.customer_name || '-'}</td>
-                <td>₦${parseFloat(order.total_amount || 0).toFixed(2)}</td>
-                <td>₦${parseFloat(order.amount_paid || 0).toFixed(2)}</td>
+                <td>GHS ${parseFloat(order.total_amount || 0).toFixed(2)}</td>
+                <td>GHS ${parseFloat(order.amount_paid || 0).toFixed(2)}</td>
                 <td>
                     <span class="status-badge ${orderStatusClass}">
                         ${formatStatus(order.order_status)}
@@ -150,7 +150,6 @@ function renderOrders(orders) {
                     <div class="action-buttons">
                         <a href="/api/orders/${order.id}/" class="btn btn-sm btn-secondary">View</a>
                         ${updateButton}
-                        <button onclick="handleMakePayment(${order.id})" class="btn btn-sm btn-primary">Make Payment</button>
                     </div>
                 </td>
             </tr>
@@ -176,11 +175,6 @@ function formatPaymentStatus(status) {
         'paid': 'Paid'
     };
     return statusMap[status] || status;
-}
-
-function handleMakePayment(orderId) {
-    // Placeholder function - will be implemented later
-    showAlert('Make Payment functionality will be implemented soon', 'info');
 }
 
 function showAlert(message, type = 'error') {

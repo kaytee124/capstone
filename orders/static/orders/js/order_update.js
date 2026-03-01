@@ -40,8 +40,8 @@ function populateForm(order) {
     document.getElementById('customer_name').value = order.customer_name || order.customer_username || '';
     document.getElementById('order_status').value = order.order_status || 'pending';
     document.getElementById('payment_status').value = order.payment_status || 'pending';
-    document.getElementById('total_amount').value = `₦${parseFloat(order.total_amount || 0).toFixed(2)}`;
-    document.getElementById('amount_paid').value = `₦${parseFloat(order.amount_paid || 0).toFixed(2)}`;
+    document.getElementById('total_amount').value = `GHS ${parseFloat(order.total_amount || 0).toFixed(2)}`;
+    document.getElementById('amount_paid').value = `GHS ${parseFloat(order.amount_paid || 0).toFixed(2)}`;
     document.getElementById('discount_amount').value = parseFloat(order.discount_amount || 0);
     document.getElementById('pickup_date').value = order.pickup_date || '';
     document.getElementById('delivery_date').value = order.delivery_date || '';
@@ -104,6 +104,18 @@ async function loadStaff(currentUserRole) {
             currentUser = JSON.parse(userStr);
         }
         
+        // If current user is superadmin, add them FIRST (before loading employees/admins)
+        // Superadmins are not included in the employees or admins API endpoints, so we must add them manually
+        if (currentUser && currentUserRole === 'superadmin') {
+            const option = document.createElement('option');
+            option.value = currentUser.id;
+            const label = `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim() || currentUser.username || 'Unknown';
+            option.textContent = `${label} (Superadmin) - You`;
+            // Insert after "Not assigned" option
+            assignedSelect.insertBefore(option, assignedSelect.firstChild.nextSibling);
+            console.log('Added superadmin to assign to list:', currentUser.id, label);
+        }
+        
         // Load employees
         let employeesRes;
         try {
@@ -121,6 +133,10 @@ async function loadStaff(currentUserRole) {
         if (employeesRes.ok) {
             const employeesData = await employeesRes.json();
             employeesData.results.forEach(emp => {
+                // Skip if this is the current superadmin (already added)
+                if (currentUser && currentUserRole === 'superadmin' && emp.id === currentUser.id) {
+                    return;
+                }
                 const option = document.createElement('option');
                 option.value = emp.id;
                 const label = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.username || 'Unknown';
@@ -147,6 +163,10 @@ async function loadStaff(currentUserRole) {
             if (adminsRes.ok) {
                 const adminsData = await adminsRes.json();
                 adminsData.results.forEach(admin => {
+                    // Skip if this is the current superadmin (already added)
+                    if (currentUser && admin.id === currentUser.id) {
+                        return;
+                    }
                     const option = document.createElement('option');
                     option.value = admin.id;
                     const label = `${admin.first_name || ''} ${admin.last_name || ''}`.trim() || admin.username || 'Unknown';

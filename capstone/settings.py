@@ -11,21 +11,30 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 from pathlib import Path
+import environ
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Initialize environment variables
+env = environ.Env(
+    # Set casting and default values
+    DEBUG=(bool, False)
+)
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
+# Read .env file if it exists
+environ.Env.read_env(BASE_DIR / '.env')
 
-# SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-d^#jn)ru4_y@0s-2fly7dxx##c2^k#4*91(0bv1)wagg#2m7mn'
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env('DEBUG', default=True)
 
 ALLOWED_HOSTS = []
+
+# Paystack Configuration
+PAYSTACK_SECRET_KEY = env('PAYSTACK_SECRET_KEY', default='sk_test_5b46571c49f9828844412c996608a585d0993a87')
+BASE_URL = env('BASE_URL', default='http://localhost:808')
+PAYSTACK_CALLBACK_URL = f'{BASE_URL}/api/payments/callback/'
 
 
 # Application definition
@@ -44,7 +53,6 @@ INSTALLED_APPS = [
     # Local apps
     'accounts',
     'customers',
-    'client_portal',
     'dashboard',
     'orders',
     'payments',

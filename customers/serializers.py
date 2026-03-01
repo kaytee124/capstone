@@ -20,6 +20,11 @@ class PhoneExistsError(ValidationError):
     error_code = 'PHONE_EXISTS'
     status_code = 409
 
+class WhatsAppExistsError(ValidationError):
+    """Raised when WhatsApp number already exists"""
+    error_code = 'WHATSAPP_EXISTS'
+    status_code = 409
+
 class InvalidPasswordError(ValidationError):
     """Raised when password is invalid"""
     error_code = 'INVALID_PASSWORD'
@@ -131,12 +136,19 @@ class CustomerRegistrationSerializer(serializers.Serializer):
         return value
     
     def validate_whatsapp_number(self, value):
-        """Check if whatsapp number is provided"""
+        """Check if whatsapp number is provided and not already registered"""
         if not value or value.strip() == '':
             raise MissingFieldsError({
                 'error_code': 'MISSING_FIELDS',
                 'message': 'Required fields missing',
                 'status_code': 400
+            })
+        
+        if Customer.objects.filter(whatsapp_number=value).exists():
+            raise WhatsAppExistsError({
+                'error_code': 'WHATSAPP_EXISTS',
+                'message': 'WhatsApp number already registered',
+                'status_code': 409
             })
         return value
     
@@ -332,12 +344,19 @@ class AdminCustomerCreationSerializer(serializers.Serializer):
         return value
     
     def validate_whatsapp_number(self, value):
-        """Check if whatsapp number is provided"""
+        """Check if whatsapp number is provided and not already registered"""
         if not value or value.strip() == '':
             raise MissingFieldsError({
                 'error_code': 'MISSING_FIELDS',
                 'message': 'Required fields missing',
                 'status_code': 400
+            })
+        
+        if Customer.objects.filter(whatsapp_number=value).exists():
+            raise WhatsAppExistsError({
+                'error_code': 'WHATSAPP_EXISTS',
+                'message': 'WhatsApp number already registered',
+                'status_code': 409
             })
         return value
     

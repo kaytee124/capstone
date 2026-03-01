@@ -1,4 +1,5 @@
 from django.shortcuts import render
+from django.db import IntegrityError
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -15,6 +16,7 @@ from .serializers import (
     UsernameExistsError,
     EmailExistsError,
     PhoneExistsError,
+    WhatsAppExistsError,
     InvalidPasswordError,
     InvalidEmailError
 )
@@ -89,6 +91,14 @@ class CustomerRegistrationView(APIView):
                 'status_code': 409
             }
             return Response(error_detail, status=status.HTTP_409_CONFLICT)
+        
+        except WhatsAppExistsError as e:
+            error_detail = e.detail if hasattr(e, 'detail') else {
+                'error_code': 'WHATSAPP_EXISTS',
+                'message': 'WhatsApp number already registered',
+                'status_code': 409
+            }
+            return Response(error_detail, status=status.HTTP_409_CONFLICT)
             
         except InvalidPasswordError as e:
             error_detail = e.detail if hasattr(e, 'detail') else {
@@ -107,12 +117,115 @@ class CustomerRegistrationView(APIView):
             return Response(error_detail, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
         
         except ValidationError as e:
-            # Handle other validation errors
+            # Extract specific error message from ValidationError
+            error_message = 'Invalid data provided'
+            error_code = 'VALIDATION_ERROR'
+            
+            # Helper function to extract string from ErrorDetail or regular value
+            def extract_string(value):
+                if hasattr(value, 'string'):
+                    return str(value.string)
+                elif hasattr(value, '__str__'):
+                    return str(value)
+                else:
+                    return str(value)
+            
+            # Check if it's a custom exception with detail
+            if hasattr(e, 'detail'):
+                if isinstance(e.detail, dict):
+                    # Check for nested error structures (field-level errors)
+                    for field, errors in e.detail.items():
+                        if isinstance(errors, dict):
+                            # Check if it's our custom error format with ErrorDetail objects
+                            if 'message' in errors:
+                                error_message = extract_string(errors['message'])
+                                if 'error_code' in errors:
+                                    error_code = extract_string(errors['error_code'])
+                                break
+                            # Also check if error_code exists without message (map to message)
+                            elif 'error_code' in errors:
+                                code = extract_string(errors['error_code'])
+                                if code == 'PHONE_EXISTS':
+                                    error_message = 'Phone number already registered'
+                                elif code == 'WHATSAPP_EXISTS':
+                                    error_message = 'WhatsApp number already registered'
+                                elif code == 'EMAIL_EXISTS':
+                                    error_message = 'Email already registered'
+                                elif code == 'USERNAME_EXISTS':
+                                    error_message = 'Username already taken'
+                                error_code = code
+                                break
+                        elif isinstance(errors, list) and len(errors) > 0:
+                            # Check first error in list
+                            first_error = errors[0]
+                            if isinstance(first_error, dict):
+                                if 'message' in first_error:
+                                    error_message = extract_string(first_error['message'])
+                                    if 'error_code' in first_error:
+                                        error_code = extract_string(first_error['error_code'])
+                                elif 'error_code' in first_error:
+                                    # Map error code to message
+                                    code = extract_string(first_error['error_code'])
+                                    if code == 'PHONE_EXISTS':
+                                        error_message = 'Phone number already registered'
+                                    elif code == 'WHATSAPP_EXISTS':
+                                        error_message = 'WhatsApp number already registered'
+                                    elif code == 'EMAIL_EXISTS':
+                                        error_message = 'Email already registered'
+                                    elif code == 'USERNAME_EXISTS':
+                                        error_message = 'Username already taken'
+                                    error_code = code
+                            else:
+                                error_message = extract_string(first_error)
+                            break
+                    # If no field errors found, check top-level message
+                    if error_message == 'Invalid data provided' and 'message' in e.detail:
+                        error_message = extract_string(e.detail['message'])
+                        if 'error_code' in e.detail:
+                            error_code = extract_string(e.detail['error_code'])
+                elif isinstance(e.detail, (list, str)):
+                    error_message = extract_string(e.detail) if isinstance(e.detail, str) else extract_string(e.detail[0]) if e.detail else error_message
+            
             return Response({
-                'error_code': 'VALIDATION_ERROR',
-                'message': 'Invalid data provided',
+                'error_code': error_code,
+                'message': error_message,
                 'status_code': 422
             }, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        
+        except IntegrityError as e:
+            # Handle database integrity errors (duplicate keys, etc.)
+            error_message = str(e)
+            if 'whatsapp_number' in error_message.lower() or 'whatsapp_number_key' in error_message.lower():
+                return Response({
+                    'error_code': 'WHATSAPP_EXISTS',
+                    'message': 'WhatsApp number already registered',
+                    'status_code': 409
+                }, status=status.HTTP_409_CONFLICT)
+            elif 'phone_number' in error_message.lower() or 'phone_number_key' in error_message.lower():
+                return Response({
+                    'error_code': 'PHONE_EXISTS',
+                    'message': 'Phone number already registered',
+                    'status_code': 409
+                }, status=status.HTTP_409_CONFLICT)
+            elif 'username' in error_message.lower():
+                return Response({
+                    'error_code': 'USERNAME_EXISTS',
+                    'message': 'Username already taken',
+                    'status_code': 409
+                }, status=status.HTTP_409_CONFLICT)
+            elif 'email' in error_message.lower():
+                return Response({
+                    'error_code': 'EMAIL_EXISTS',
+                    'message': 'Email already registered',
+                    'status_code': 409
+                }, status=status.HTTP_409_CONFLICT)
+            else:
+                logger.error(f'Database integrity error: {str(e)}', exc_info=True)
+                return Response({
+                    'error_code': 'DUPLICATE_ENTRY',
+                    'message': 'A record with this information already exists',
+                    'status_code': 409
+                }, status=status.HTTP_409_CONFLICT)
             
         except Exception as e:
             # Log the error for debugging
@@ -186,13 +299,124 @@ class AdminCustomerCreationView(AutoRefreshTokenMixin, APIView):
             }
             return Response(error_detail, status=status.HTTP_409_CONFLICT)
         
+        except WhatsAppExistsError as e:
+            error_detail = e.detail if hasattr(e, 'detail') else {
+                'error_code': 'WHATSAPP_EXISTS',
+                'message': 'WhatsApp number already registered',
+                'status_code': 409
+            }
+            return Response(error_detail, status=status.HTTP_409_CONFLICT)
+        
         except ValidationError as e:
-            # Handle validation errors
+            # Extract specific error message from ValidationError
+            error_message = 'Invalid data provided'
+            error_code = 'VALIDATION_ERROR'
+            
+            # Helper function to extract string from ErrorDetail or regular value
+            def extract_string(value):
+                if hasattr(value, 'string'):
+                    return str(value.string)
+                elif hasattr(value, '__str__'):
+                    return str(value)
+                else:
+                    return str(value)
+            
+            # Check if it's a custom exception with detail
+            if hasattr(e, 'detail'):
+                if isinstance(e.detail, dict):
+                    # Check for nested error structures (field-level errors)
+                    for field, errors in e.detail.items():
+                        if isinstance(errors, dict):
+                            # Check if it's our custom error format with ErrorDetail objects
+                            if 'message' in errors:
+                                error_message = extract_string(errors['message'])
+                                if 'error_code' in errors:
+                                    error_code = extract_string(errors['error_code'])
+                                break
+                            # Also check if error_code exists without message (map to message)
+                            elif 'error_code' in errors:
+                                code = extract_string(errors['error_code'])
+                                if code == 'PHONE_EXISTS':
+                                    error_message = 'Phone number already registered'
+                                elif code == 'WHATSAPP_EXISTS':
+                                    error_message = 'WhatsApp number already registered'
+                                elif code == 'EMAIL_EXISTS':
+                                    error_message = 'Email already registered'
+                                elif code == 'USERNAME_EXISTS':
+                                    error_message = 'Username already taken'
+                                error_code = code
+                                break
+                        elif isinstance(errors, list) and len(errors) > 0:
+                            # Check first error in list
+                            first_error = errors[0]
+                            if isinstance(first_error, dict):
+                                if 'message' in first_error:
+                                    error_message = extract_string(first_error['message'])
+                                    if 'error_code' in first_error:
+                                        error_code = extract_string(first_error['error_code'])
+                                elif 'error_code' in first_error:
+                                    # Map error code to message
+                                    code = extract_string(first_error['error_code'])
+                                    if code == 'PHONE_EXISTS':
+                                        error_message = 'Phone number already registered'
+                                    elif code == 'WHATSAPP_EXISTS':
+                                        error_message = 'WhatsApp number already registered'
+                                    elif code == 'EMAIL_EXISTS':
+                                        error_message = 'Email already registered'
+                                    elif code == 'USERNAME_EXISTS':
+                                        error_message = 'Username already taken'
+                                    error_code = code
+                            else:
+                                error_message = extract_string(first_error)
+                            break
+                    # If no field errors found, check top-level message
+                    if error_message == 'Invalid data provided' and 'message' in e.detail:
+                        error_message = extract_string(e.detail['message'])
+                        if 'error_code' in e.detail:
+                            error_code = extract_string(e.detail['error_code'])
+                elif isinstance(e.detail, (list, str)):
+                    error_message = extract_string(e.detail) if isinstance(e.detail, str) else extract_string(e.detail[0]) if e.detail else error_message
+            
             return Response({
-                'error_code': 'VALIDATION_ERROR',
-                'message': 'Invalid data provided',
+                'error_code': error_code,
+                'message': error_message,
                 'status_code': 422
             }, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        
+        except IntegrityError as e:
+            # Handle database integrity errors (duplicate keys, etc.)
+            error_message = str(e)
+            if 'whatsapp_number' in error_message.lower() or 'whatsapp_number_key' in error_message.lower():
+                return Response({
+                    'error_code': 'WHATSAPP_EXISTS',
+                    'message': 'WhatsApp number already registered',
+                    'status_code': 409
+                }, status=status.HTTP_409_CONFLICT)
+            elif 'phone_number' in error_message.lower() or 'phone_number_key' in error_message.lower():
+                return Response({
+                    'error_code': 'PHONE_EXISTS',
+                    'message': 'Phone number already registered',
+                    'status_code': 409
+                }, status=status.HTTP_409_CONFLICT)
+            elif 'username' in error_message.lower():
+                return Response({
+                    'error_code': 'USERNAME_EXISTS',
+                    'message': 'Username already taken',
+                    'status_code': 409
+                }, status=status.HTTP_409_CONFLICT)
+            elif 'email' in error_message.lower():
+                return Response({
+                    'error_code': 'EMAIL_EXISTS',
+                    'message': 'Email already registered',
+                    'status_code': 409
+                }, status=status.HTTP_409_CONFLICT)
+            else:
+                logger.error(f'Database integrity error: {str(e)}', exc_info=True)
+                return Response({
+                    'error_code': 'DUPLICATE_ENTRY',
+                    'message': 'A record with this information already exists',
+                    'status_code': 409
+                }, status=status.HTTP_409_CONFLICT)
             
         except Exception as e:
             # Log the error for debugging

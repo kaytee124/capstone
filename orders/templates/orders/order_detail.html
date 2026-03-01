@@ -204,6 +204,10 @@
                             <p id="amountPaid">-</p>
                         </div>
                         <div class="info-item">
+                            <label>Remaining Amount</label>
+                            <p id="remainingAmount" style="font-weight: 600; color: #dc3545;">-</p>
+                        </div>
+                        <div class="info-item">
                             <label>Discount Amount</label>
                             <p id="discountAmount">-</p>
                         </div>
@@ -266,7 +270,7 @@
                         <tfoot id="orderItemsTableFooter" style="display: none;">
                             <tr class="order-items-total-row">
                                 <td colspan="5" style="text-align: right; font-weight: 600;">Total:</td>
-                                <td id="orderItemsTotal" style="font-weight: 600; color: #007bff;">₦0.00</td>
+                                <td id="orderItemsTotal" style="font-weight: 600; color: #007bff;">GHS 0.00</td>
                                 <td></td>
                             </tr>
                         </tfoot>
@@ -276,7 +280,18 @@
 
             <div class="action-buttons" id="clientActionButtons" style="display: none;">
                 <button id="confirmOrderBtn" class="btn btn-primary">Confirm Order</button>
-                <button id="makePaymentBtn" class="btn btn-success">Make Payment</button>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <label for="paymentAmount" style="font-weight: 500;">Payment Amount (GHS):</label>
+                    <input 
+                        type="number" 
+                        id="paymentAmount" 
+                        step="0.01" 
+                        min="0.01" 
+                        placeholder="Enter amount"
+                        style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; width: 150px;"
+                    />
+                    <button id="makePaymentBtn" class="btn btn-success">Make Payment</button>
+                </div>
                 <a href="{% url 'orders_list' %}" class="btn btn-secondary">Back to Orders</a>
             </div>
             <div class="action-buttons" id="staffActionButtons" style="display: none;">

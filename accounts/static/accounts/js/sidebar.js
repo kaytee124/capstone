@@ -31,6 +31,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const userData = localStorage.getItem('user');
     const userRole = userData ? JSON.parse(userData).role : null;
     
+    // Dashboard section visible to all authenticated users
+    if (userRole) {
+        const dashboardLink = document.getElementById('dashboardLink');
+        if (dashboardLink) {
+            dashboardLink.style.display = 'block';
+        }
+    }
+    
     // Orders section visible to all authenticated users
     if (userRole) {
         const ordersSection = document.getElementById('ordersSection');

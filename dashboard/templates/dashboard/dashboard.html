@@ -1,0 +1,185 @@
+{% extends 'accounts/base.html' %}
+{% load static %}
+
+{% block title %}Dashboard - Laundry Management System{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'accounts/css/forms.css' %}">
+<style>
+    .dashboard-container {
+        padding: 1.5rem;
+    }
+    
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    .metric-card {
+        background: white;
+        border-radius: 8px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .metric-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    
+    .metric-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+    
+    .metric-title {
+        font-size: 0.875rem;
+        color: #6c757d;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .metric-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.25rem;
+    }
+    
+    .metric-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #212529;
+        margin: 0.5rem 0;
+    }
+    
+    .metric-subtitle {
+        font-size: 0.875rem;
+        color: #6c757d;
+    }
+    
+    .recent-orders-section {
+        background: white;
+        border-radius: 8px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .section-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        color: #212529;
+    }
+    
+    .orders-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .orders-table th {
+        background: #f8f9fa;
+        padding: 0.75rem;
+        text-align: left;
+        font-weight: 600;
+        font-size: 0.875rem;
+        color: #6c757d;
+        border-bottom: 2px solid #dee2e6;
+    }
+    
+    .orders-table td {
+        padding: 0.75rem;
+        border-bottom: 1px solid #dee2e6;
+        font-size: 0.875rem;
+    }
+    
+    .orders-table tr:hover {
+        background: #f8f9fa;
+    }
+    
+    .status-badge {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    
+    .status-pending {
+        background: #fff3cd;
+        color: #856404;
+    }
+    
+    .status-in-progress {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+    
+    .status-ready {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .status-completed {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+    
+    .status-paid {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .status-partially-paid {
+        background: #fff3cd;
+        color: #856404;
+    }
+    
+    .loading {
+        text-align: center;
+        padding: 2rem;
+        color: #6c757d;
+    }
+    
+    .error {
+        background: #f8d7da;
+        color: #721c24;
+        padding: 1rem;
+        border-radius: 4px;
+        margin-bottom: 1rem;
+    }
+    
+    .no-data {
+        text-align: center;
+        padding: 2rem;
+        color: #6c757d;
+    }
+    
+    .currency {
+        font-weight: 600;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <div id="dashboardContent">
+        <div class="loading">Loading dashboard metrics...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'dashboard/js/dashboard.js' %}"></script>
+{% endblock %}

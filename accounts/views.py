@@ -137,7 +137,7 @@ class userloginview(APIView):
                 max_age=3600,  # 1 hour (matches ACCESS_TOKEN_LIFETIME)
                 httponly=False,  # Allow JavaScript access
                 samesite='Lax',
-                secure=False  # Set to True in production with HTTPS
+                secure=False
             )
             response.set_cookie(
                 'refresh_token',
@@ -145,7 +145,7 @@ class userloginview(APIView):
                 max_age=86400,  # 1 day (matches REFRESH_TOKEN_LIFETIME)
                 httponly=False,  # Allow JavaScript access
                 samesite='Lax',
-                secure=False  # Set to True in production with HTTPS
+                secure=False
             )
             
             return response

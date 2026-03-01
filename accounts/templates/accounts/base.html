@@ -26,6 +26,21 @@
             
             <nav class="sidebar-nav">
                 <div class="nav-section">
+                    <h3 class="nav-section-title">Dashboard</h3>
+                    <ul class="nav-list">
+                        <li><a href="/" class="nav-link" id="dashboardLink">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="3" width="7" height="7"></rect>
+                                <rect x="14" y="3" width="7" height="7"></rect>
+                                <rect x="14" y="14" width="7" height="7"></rect>
+                                <rect x="3" y="14" width="7" height="7"></rect>
+                            </svg>
+                            <span>Dashboard</span>
+                        </a></li>
+                    </ul>
+                </div>
+                
+                <div class="nav-section">
                     <h3 class="nav-section-title">My Account</h3>
                     <ul class="nav-list">
                         <li><a href="{% url 'user_profile' %}" class="nav-link {% if request.resolver_match.url_name == 'user_profile' %}active{% endif %}">

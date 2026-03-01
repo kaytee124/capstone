@@ -201,7 +201,22 @@ class ServiceCreateView(APIView):
             if isinstance(error_detail, dict):
                 field_errors = []
                 for field, errors in error_detail.items():
-                    if isinstance(errors, list) and len(errors) > 0:
+                    # Handle dict errors (custom error format with ErrorDetail objects)
+                    if isinstance(errors, dict):
+                        if 'message' in errors:
+                            msg = errors['message'].string if hasattr(errors['message'], 'string') else str(errors['message'])
+                            field_errors.append(msg)
+                        elif 'error_code' in errors:
+                            code = errors['error_code'].string if hasattr(errors['error_code'], 'string') else str(errors['error_code'])
+                            # Map error code to message
+                            error_messages = {
+                                'PHONE_EXISTS': 'Phone number already registered',
+                                'EMAIL_EXISTS': 'Email already registered',
+                                'USERNAME_EXISTS': 'Username already taken'
+                            }
+                            msg = error_messages.get(code, code)
+                            field_errors.append(msg)
+                    elif isinstance(errors, list) and len(errors) > 0:
                         # Extract the error message string from ErrorDetail
                         error_msg = errors[0]
                         if hasattr(error_msg, 'string'):
@@ -415,7 +430,22 @@ class ServiceUpdateView(APIView):
             if isinstance(error_detail, dict):
                 field_errors = []
                 for field, errors in error_detail.items():
-                    if isinstance(errors, list) and len(errors) > 0:
+                    # Handle dict errors (custom error format with ErrorDetail objects)
+                    if isinstance(errors, dict):
+                        if 'message' in errors:
+                            msg = errors['message'].string if hasattr(errors['message'], 'string') else str(errors['message'])
+                            field_errors.append(msg)
+                        elif 'error_code' in errors:
+                            code = errors['error_code'].string if hasattr(errors['error_code'], 'string') else str(errors['error_code'])
+                            # Map error code to message
+                            error_messages = {
+                                'PHONE_EXISTS': 'Phone number already registered',
+                                'EMAIL_EXISTS': 'Email already registered',
+                                'USERNAME_EXISTS': 'Username already taken'
+                            }
+                            msg = error_messages.get(code, code)
+                            field_errors.append(msg)
+                    elif isinstance(errors, list) and len(errors) > 0:
                         # Extract the error message string from ErrorDetail
                         error_msg = errors[0]
                         if hasattr(error_msg, 'string'):

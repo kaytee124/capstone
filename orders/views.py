@@ -4,7 +4,7 @@ from django.shortcuts import render, get_object_or_404
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.exceptions import AuthenticationFailed, NotAuthenticated, PermissionDenied, ValidationError, NotFound
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from accounts.permissions import IsAdminOrSuperadmin, IsStaff
@@ -151,7 +151,22 @@ class OrderCreateView(APIView):
             if isinstance(error_detail, dict):
                 field_errors = []
                 for field, errors in error_detail.items():
-                    if isinstance(errors, list) and len(errors) > 0:
+                    # Handle dict errors (custom error format with ErrorDetail objects)
+                    if isinstance(errors, dict):
+                        if 'message' in errors:
+                            msg = errors['message'].string if hasattr(errors['message'], 'string') else str(errors['message'])
+                            field_errors.append(msg)
+                        elif 'error_code' in errors:
+                            code = errors['error_code'].string if hasattr(errors['error_code'], 'string') else str(errors['error_code'])
+                            # Map error code to message
+                            error_messages = {
+                                'PHONE_EXISTS': 'Phone number already registered',
+                                'EMAIL_EXISTS': 'Email already registered',
+                                'USERNAME_EXISTS': 'Username already taken'
+                            }
+                            msg = error_messages.get(code, code)
+                            field_errors.append(msg)
+                    elif isinstance(errors, list) and len(errors) > 0:
                         error_msg = errors[0]
                         if hasattr(error_msg, 'string'):
                             msg = error_msg.string
@@ -289,7 +304,22 @@ class OrderUpdateView(APIView):
             if isinstance(error_detail, dict):
                 field_errors = []
                 for field, errors in error_detail.items():
-                    if isinstance(errors, list) and len(errors) > 0:
+                    # Handle dict errors (custom error format with ErrorDetail objects)
+                    if isinstance(errors, dict):
+                        if 'message' in errors:
+                            msg = errors['message'].string if hasattr(errors['message'], 'string') else str(errors['message'])
+                            field_errors.append(msg)
+                        elif 'error_code' in errors:
+                            code = errors['error_code'].string if hasattr(errors['error_code'], 'string') else str(errors['error_code'])
+                            # Map error code to message
+                            error_messages = {
+                                'PHONE_EXISTS': 'Phone number already registered',
+                                'EMAIL_EXISTS': 'Email already registered',
+                                'USERNAME_EXISTS': 'Username already taken'
+                            }
+                            msg = error_messages.get(code, code)
+                            field_errors.append(msg)
+                    elif isinstance(errors, list) and len(errors) > 0:
                         error_msg = errors[0]
                         if hasattr(error_msg, 'string'):
                             msg = error_msg.string
@@ -325,12 +355,44 @@ class OrderUpdateView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class OrderDetailView(APIView):
-    permission_classes = [IsAuthenticated]
     serializer_class = OrderSerializer
+    
+    def get_authenticators(self):
+        """Skip authentication for HTML requests, require auth for API"""
+        # Check if this is an HTML request
+        accept_header = self.request.META.get('HTTP_ACCEPT', '')
+        if 'text/html' in accept_header or not accept_header:
+            return []  # No authentication required for HTML rendering
+        return super().get_authenticators()  # Use default authenticators for API
+    
+    def get_permissions(self):
+        """Allow unauthenticated access for HTML requests, require auth for API"""
+        # Check if this is an HTML request
+        accept_header = self.request.META.get('HTTP_ACCEPT', '')
+        if 'text/html' in accept_header or not accept_header:
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
     def get(self, request, *args, **kwargs):
         """Get an existing order by id - with role-based access control"""
         order_id = kwargs.get('id')
+        
+        # Check if this is an HTML request (template rendering)
+        # Allow HTML rendering without auth - JavaScript will handle auth for data fetching
+        accept_header = request.META.get('HTTP_ACCEPT', '')
+        if 'text/html' in accept_header or not accept_header:
+            # Render template without requiring authentication
+            # The JavaScript will use token from localStorage to fetch data
+            return render(request, 'orders/order_detail.html', {'order_id': order_id})
+        
+        # For API requests, require authentication
+        if not request.user.is_authenticated:
+            return Response({
+                'error_code': 'NO_TOKEN',
+                'message': 'Authentication credentials not provided',
+                'status_code': 401
+            }, status=status.HTTP_401_UNAUTHORIZED)
+        
         try:
             # Use prefetch_related to include order items
             order = Order.objects.prefetch_related('order_items__service').select_related('customer__user', 'assigned_to', 'created_by').get(id=order_id)
@@ -362,11 +424,6 @@ class OrderDetailView(APIView):
                     'message': 'You do not have permission to view this order',
                     'status_code': 403
                 }, status=status.HTTP_403_FORBIDDEN)
-            
-            # Check if this is an HTML request (template rendering)
-            accept_header = request.META.get('HTTP_ACCEPT', '')
-            if 'text/html' in accept_header or not accept_header:
-                return render(request, 'orders/order_detail.html', {'order_id': order_id})
             
             # For API requests, return JSON
             serializer = self.serializer_class(order)

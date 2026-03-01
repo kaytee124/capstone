@@ -1,29 +1,94 @@
 // Login Form Handler
 document.addEventListener('DOMContentLoaded', function() {
-    const loginForm = document.getElementById('loginForm');
-    const usernameInput = document.getElementById('username');
-    const passwordInput = document.getElementById('password');
-    const passwordToggle = document.getElementById('passwordToggle');
-    const alertContainer = document.getElementById('alertContainer');
-    const submitBtn = document.getElementById('submitBtn');
+    // Check if user already has valid tokens - if so, redirect to profile
+    const accessToken = typeof TokenManager !== 'undefined' 
+        ? TokenManager.getAccessToken() 
+        : localStorage.getItem('access_token');
+    const refreshToken = typeof TokenManager !== 'undefined'
+        ? TokenManager.getRefreshToken()
+        : localStorage.getItem('refresh_token');
     
-    // Show error message if present in URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const error = urlParams.get('error');
-    const errorMessage = urlParams.get('message');
-    
-    if (error && errorMessage) {
-        // Show the error alert if it exists in the template
-        const existingAlert = alertContainer.querySelector('.alert');
-        if (existingAlert) {
-            alertContainer.classList.remove('hidden');
+    if (accessToken || refreshToken) {
+        // User has tokens, verify they're still valid
+        if (accessToken) {
+            fetch('/api/accounts/user/profile/', {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`,
+                    'X-Refresh-Token': refreshToken || ''
+                },
+                credentials: 'include'
+            }).then(response => {
+                if (response.ok) {
+                    // Token is valid, redirect to profile
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const nextUrl = urlParams.get('next') || '/api/accounts/user/profile/';
+                    // Sync tokens to cookies before redirecting
+                    if (typeof TokenManager !== 'undefined') {
+                        TokenManager.setCookie('access_token', accessToken, 3600);
+                        if (refreshToken) {
+                            TokenManager.setCookie('refresh_token', refreshToken, 86400);
+                        }
+                    }
+                    window.location.href = nextUrl;
+                } else {
+                    // Token invalid, clear and show login form
+                    if (typeof TokenManager !== 'undefined') {
+                        TokenManager.clearTokens();
+                    } else {
+                        localStorage.removeItem('access_token');
+                        localStorage.removeItem('refresh_token');
+                        localStorage.removeItem('user');
+                    }
+                    initLoginForm();
+                }
+            }).catch(error => {
+                console.error('Token verification error:', error);
+                // On error, clear tokens and show login form
+                if (typeof TokenManager !== 'undefined') {
+                    TokenManager.clearTokens();
+                } else {
+                    localStorage.removeItem('access_token');
+                    localStorage.removeItem('refresh_token');
+                    localStorage.removeItem('user');
+                }
+                initLoginForm();
+            });
         } else {
-            showAlert(errorMessage, error.toLowerCase().includes('permission') ? 'error' : 'error');
+            // Only refresh token, try to use it
+            initLoginForm();
         }
+    } else {
+        // No tokens, show login form
+        initLoginForm();
     }
+    
+    function initLoginForm() {
+        const loginForm = document.getElementById('loginForm');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const passwordToggle = document.getElementById('passwordToggle');
+        const alertContainer = document.getElementById('alertContainer');
+        const submitBtn = document.getElementById('submitBtn');
+        
+        // Show error message if present in URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const error = urlParams.get('error');
+        const errorMessage = urlParams.get('message');
+        
+        if (error && errorMessage) {
+            // Show the error alert if it exists in the template
+            const existingAlert = alertContainer.querySelector('.alert');
+            if (existingAlert) {
+                alertContainer.classList.remove('hidden');
+            } else {
+                showAlert(errorMessage, error.toLowerCase().includes('permission') ? 'error' : 'error');
+            }
+        }
 
-    // Password toggle functionality
-    if (passwordToggle) {
+        // Password toggle functionality
+        if (passwordToggle) {
         passwordToggle.addEventListener('click', function() {
             const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
             passwordInput.setAttribute('type', type);
@@ -336,24 +401,27 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Real-time validation
-    usernameInput.addEventListener('blur', validateForm);
-    passwordInput.addEventListener('blur', validateForm);
-    
-    // Clear errors on input
-    usernameInput.addEventListener('input', function() {
-        this.classList.remove('error');
-        const errorMsg = this.parentElement.querySelector('.error-message');
-        if (errorMsg) errorMsg.remove();
-        hideAlert();
-    });
-    
-    passwordInput.addEventListener('input', function() {
-        this.classList.remove('error');
-        const errorMsg = this.parentElement.querySelector('.error-message');
-        if (errorMsg) errorMsg.remove();
-        hideAlert();
-    });
+        // Real-time validation
+        if (usernameInput) {
+            usernameInput.addEventListener('blur', validateForm);
+            usernameInput.addEventListener('input', function() {
+                this.classList.remove('error');
+                const errorMsg = this.parentElement.querySelector('.error-message');
+                if (errorMsg) errorMsg.remove();
+                hideAlert();
+            });
+        }
+        
+        if (passwordInput) {
+            passwordInput.addEventListener('blur', validateForm);
+            passwordInput.addEventListener('input', function() {
+                this.classList.remove('error');
+                const errorMsg = this.parentElement.querySelector('.error-message');
+                if (errorMsg) errorMsg.remove();
+                hideAlert();
+            });
+        }
+    }
 });
 
 // Helper function to get CSRF token

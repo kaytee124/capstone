@@ -276,3 +276,85 @@ window.fetch = async function(url, options = {}) {
 
            return response;
 };
+
+// Global navigation handler - ensures tokens from localStorage are synced to cookies
+// This allows authenticated users to navigate from unauthenticated pages (like payment callback)
+// The server-side authentication checks cookies, so we sync localStorage tokens to cookies
+(function() {
+    // Function to sync tokens from localStorage to cookies
+    function syncTokensToCookies() {
+        const accessToken = TokenManager.getAccessToken();
+        const refreshToken = TokenManager.getRefreshToken();
+        
+        if (accessToken) {
+            TokenManager.setCookie('access_token', accessToken, 3600);
+        }
+        if (refreshToken) {
+            TokenManager.setCookie('refresh_token', refreshToken, 86400);
+        }
+    }
+    
+    // Function to check if user has tokens
+    function hasTokens() {
+        const accessToken = TokenManager.getAccessToken();
+        const refreshToken = TokenManager.getRefreshToken();
+        return !!(accessToken || refreshToken);
+    }
+    
+    // Sync tokens to cookies on page load (so server can use them for authentication)
+    if (hasTokens()) {
+        syncTokensToCookies();
+    }
+    
+    // Intercept all link clicks to sync tokens before navigation
+    document.addEventListener('click', function(e) {
+        const link = e.target.closest('a');
+        if (!link) return;
+        
+        const href = link.getAttribute('href');
+        if (!href) return;
+        
+        // Skip external links, mailto, tel, etc.
+        if (href.startsWith('http://') || href.startsWith('https://') || 
+            href.startsWith('mailto:') || href.startsWith('tel:') || 
+            href.startsWith('#') || href.startsWith('javascript:')) {
+            return;
+        }
+        
+        // Skip if link has target="_blank" or other special attributes
+        if (link.target === '_blank' || link.hasAttribute('download')) {
+            return;
+        }
+        
+        // Only handle API routes (internal navigation)
+        if (href.startsWith('/api/') && !href.startsWith('/api/accounts/login/')) {
+            // Check if we have tokens
+            if (hasTokens()) {
+                // Sync tokens to cookies before navigation
+                // This ensures the server-side authentication can read them
+                syncTokensToCookies();
+                // Allow normal navigation - cookies will be sent with request
+            } else {
+                // No tokens, prevent navigation and redirect to login
+                e.preventDefault();
+                window.location.href = `/api/accounts/login/?next=${encodeURIComponent(href)}`;
+            }
+        }
+    }, true); // Use capture phase to intercept early
+    
+    // Override window.location.href setter to sync tokens before programmatic navigation
+    let locationHrefDescriptor = Object.getOwnPropertyDescriptor(window, 'location');
+    if (locationHrefDescriptor && locationHrefDescriptor.set) {
+        const originalSetter = locationHrefDescriptor.set;
+        Object.defineProperty(window, 'location', {
+            set: function(url) {
+                if (hasTokens() && typeof url === 'string' && url.startsWith('/api/') && !url.startsWith('/api/accounts/login/')) {
+                    syncTokensToCookies();
+                }
+                originalSetter.call(window, url);
+            },
+            get: locationHrefDescriptor.get,
+            configurable: true
+        });
+    }
+})();

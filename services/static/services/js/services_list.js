@@ -128,7 +128,7 @@ function renderServices(services) {
             <tr>
                 <td>${service.name || '-'}</td>
                 <td>${service.category || '-'}</td>
-                <td>₦${parseFloat(service.price || 0).toFixed(2)}</td>
+                <td>GHS ${parseFloat(service.price || 0).toFixed(2)}</td>
                 <td>${service.unit || '-'}</td>
                 <td>${service.estimated_days || '-'} days</td>
                 <td>
